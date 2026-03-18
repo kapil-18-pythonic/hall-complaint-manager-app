@@ -1,0 +1,67 @@
+import { StyleSheet } from "react-native";
+
+export const commonStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#0A0F2C",
+    justifyContent: "center",
+    padding: 20,
+  },
+  card: {
+    backgroundColor: "#121A45",
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: "#24327A",
+    shadowColor: "#000",
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 8,
+  },
+  heading: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#F3F6FF",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  subheading: {
+    fontSize: 14,
+    color: "#AEB8E8",
+    textAlign: "center",
+    lineHeight: 21,
+    marginBottom: 24,
+  },
+  email: {
+    fontSize: 14,
+    color: "#DCE3FF",
+    textAlign: "center",
+    marginBottom: 22,
+    fontWeight: "600",
+  },
+  input: {
+    backgroundColor: "#0E1438",
+    borderWidth: 1,
+    borderColor: "#2B3A8A",
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: "#F3F6FF",
+    marginBottom: 18,
+  },
+  button: {
+    backgroundColor: "#1B2A72",
+    paddingVertical: 15,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#3A4FB8",
+    alignItems: "center",
+  },
+  buttonText: {
+    color: "#F3F6FF",
+    fontSize: 17,
+    fontWeight: "700",
+  },
+});
