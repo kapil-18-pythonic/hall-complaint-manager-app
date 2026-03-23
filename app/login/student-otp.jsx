@@ -11,7 +11,7 @@ import {
 import { useLocalSearchParams, router } from "expo-router";
 import { commonStyles } from "../../src/constants/authStyles";
 
-const BASE_URL = "http://10.145.149.215:5000";
+const BASE_URL = "https://hall-complaint-backend.onrender.com";
 
 export default function StudentOtp() {
   const params = useLocalSearchParams();

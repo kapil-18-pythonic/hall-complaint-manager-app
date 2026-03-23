@@ -222,5 +222,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on http://10.145.149.215:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
