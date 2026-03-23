@@ -1,4 +1,4 @@
-const BASE_URL = "https://hall-complaint-backend.onrender.com";
+const BASE_URL = "https://hall-complaint-manager.onrender.com";
 
 async function handleResponse(response) {
   const data = await response.json();

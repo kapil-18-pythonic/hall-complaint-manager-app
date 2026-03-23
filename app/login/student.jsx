@@ -11,7 +11,7 @@ import {
 import { router } from "expo-router";
 import { commonStyles } from "../../src/constants/authStyles";
 
-const BASE_URL = "https://hall-complaint-backend.onrender.com";
+const BASE_URL = "https://hall-complaint-manager.onrender.com";
 
 export default function StudentLogin() {
   const [roll, setRoll] = useState("");
