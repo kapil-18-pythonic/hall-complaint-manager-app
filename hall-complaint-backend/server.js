@@ -130,30 +130,44 @@ app.post("/send-otp", async (req, res) => {
       expiresAt: Date.now() + 5 * 60 * 1000,
     };
 
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: user.email,
-      subject: "Hall Complaint Manager Login OTP",
-      html: `
-        <h2>Hall Complaint Manager</h2>
-        <p>Hello ${user.name || "User"},</p>
-        <p>Your OTP for login is:</p>
-        <h1 style="letter-spacing: 4px;">${otp}</h1>
-        <p>This OTP is valid for 5 minutes.</p>
-      `,
-    });
+    let emailSent = false;
+    let emailError = null;
+
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: user.email,
+        subject: "Hall Complaint Manager Login OTP",
+        html: `
+          <h2>Hall Complaint Manager</h2>
+          <p>Hello ${user.name || "User"},</p>
+          <p>Your OTP for login is:</p>
+          <h1 style="letter-spacing: 4px;">${otp}</h1>
+          <p>This OTP is valid for 5 minutes.</p>
+        `,
+      });
+      emailSent = true;
+    } catch (mailErr) {
+      console.error("Mail send failed:", mailErr.message);
+      emailError = mailErr.message;
+    }
 
     return res.status(200).json({
       success: true,
-      message: "OTP sent successfully.",
+      message: emailSent
+        ? "OTP sent successfully."
+        : "OTP generated successfully. Email sending failed, so OTP is returned for testing.",
       role,
       user,
+      otp,
+      emailSent,
+      emailError,
     });
   } catch (error) {
     console.error("Send OTP error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to send OTP.",
+      message: "Failed to generate OTP.",
       error: error.message,
     });
   }
