@@ -1,20 +1,17 @@
-const workers = [
+const workersData = [
   {
-    workerId: "W001",
     name: "Rakesh",
     hall: "RK Hall",
     email: "kapilchouhan1811@gmail.com",
     type: "civil",
   },
   {
-    workerId: "W002",
     name: "Sarthak",
     hall: "RK Hall",
     email: "singhanshuman1528@gmail.com",
     type: "sports",
   },
   {
-    workerId: "W003",
     name: "Abhishek",
     hall: "RK Hall",
     email: "satyamrawatsn@gmail.com",
@@ -22,4 +19,4 @@ const workers = [
   },
 ];
 
-module.exports = workers;
+module.exports = workersData;

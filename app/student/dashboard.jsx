@@ -1,11 +1,15 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
-import { useLocalSearchParams, router } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { complaintTypes } from "../../src/constants/complaintTypes";
-import { colors } from "../../src/constants/colors";
 
 export default function StudentDashboard() {
-  const { name, roll, hall } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const router = useRouter();
+
+  const name = Array.isArray(params.name) ? params.name[0] : params.name;
+  const roll = Array.isArray(params.roll) ? params.roll[0] : params.roll;
+  const hall = Array.isArray(params.hall) ? params.hall[0] : params.hall;
 
   const handleNavigate = (route) => {
     router.push({
@@ -20,16 +24,11 @@ export default function StudentDashboard() {
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.heading}>Student Dashboard</Text>
-
-      <View style={styles.infoCard}>
-        <Text style={styles.welcome}>Welcome, {name}</Text>
-        <Text style={styles.info}>Roll Number: {roll}</Text>
-        <Text style={styles.info}>Hall: {hall}</Text>
-      </View>
+      <Text style={styles.hallName}>{hall || "RK HALL"}</Text>
+      <Text style={styles.welcomeText}>Welcome {name || "Student"}</Text>
 
       <Pressable
-        style={styles.myComplaintsButton}
+        style={styles.primaryButton}
         onPress={() =>
           router.push({
             pathname: "/student/my-complaints",
@@ -37,18 +36,18 @@ export default function StudentDashboard() {
           })
         }
       >
-        <Text style={styles.myComplaintsButtonText}>View My Complaints</Text>
+        <Text style={styles.primaryButtonText}>View My Complaints</Text>
       </Pressable>
 
-      <Text style={styles.sectionTitle}>Complaint Type</Text>
+      <Text style={styles.sectionTitle}>Complaint Types</Text>
 
       {complaintTypes.map((item) => (
         <Pressable
           key={item.id}
-          style={styles.card}
+          style={styles.typeCard}
           onPress={() => handleNavigate(item.route)}
         >
-          <Text style={styles.cardText}>{item.title}</Text>
+          <Text style={styles.typeText}>{item.title}</Text>
         </Pressable>
       ))}
     </ScrollView>
@@ -58,68 +57,62 @@ export default function StudentDashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.white,
+    backgroundColor: "#0A0F2C",
   },
   contentContainer: {
-    padding: 20,
-    paddingTop: 40,
+    paddingHorizontal: 15,
+    paddingTop: 70,
     paddingBottom: 40,
   },
-  heading: {
-    fontSize: 28,
+  hallName: {
+    fontSize: 32,
     fontWeight: "800",
-    color: colors.text,
-    marginBottom: 20,
-  },
-  infoCard: {
-    backgroundColor: colors.secondary,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 20,
-  },
-  welcome: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: colors.text,
-    marginBottom: 8,
-  },
-  info: {
-    fontSize: 15,
-    color: colors.subText,
-    marginBottom: 4,
-  },
-  myComplaintsButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginBottom: 24,
-  },
-  myComplaintsButtonText: {
-    color: colors.white,
+    color: "#d3d2e5",
     textAlign: "center",
-    fontSize: 16,
+    textTransform: "uppercase",
+    marginBottom: 18,
+  },
+  welcomeText: {
+    fontSize: 24,
     fontWeight: "700",
+    color: "#bec1d1",
+    textAlign: "center",
+    marginBottom: 40,
+  },
+  primaryButton: {
+    backgroundColor: "#141D6B",
+    borderWidth: 1,
+    borderColor: "#3147C9",
+    paddingVertical: 13,
+    borderRadius: 15,
+    alignItems: "center",
+    marginBottom: 34,
+  },
+  primaryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "600",
   },
   sectionTitle: {
+    color: "#acaeb7",
     fontSize: 20,
     fontWeight: "700",
-    color: colors.text,
-    marginBottom: 14,
+    marginBottom: 16,
   },
-  card: {
-    backgroundColor: colors.white,
+  typeCard: {
+    backgroundColor: "#141D6B",
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "#3147C9",
     borderRadius: 12,
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-    marginBottom: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    flexDirection: "row",
+    alignItems: "center",
   },
-  cardText: {
-    fontSize: 17,
+  typeText: {
+    color: "#F5F7FF",
+    fontSize: 18,
     fontWeight: "600",
-    color: colors.text,
   },
 });

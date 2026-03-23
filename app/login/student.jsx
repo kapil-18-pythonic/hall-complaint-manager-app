@@ -11,54 +11,71 @@ import {
 import { router } from "expo-router";
 import { commonStyles } from "../../src/constants/authStyles";
 
-const BASE_URL = "http://10.145.204.10:5000";
+const BASE_URL = "http://10.145.149.215:5000";
 
 export default function StudentLogin() {
   const [roll, setRoll] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSendOtp = async () => {
-    if (!roll.trim()) {
-      Alert.alert("Missing Roll Number", "Please enter your roll number.");
+  if (!roll.trim()) {
+    Alert.alert("Missing Roll Number", "Please enter your roll number.");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    const url = `${BASE_URL}/send-otp`;
+    const payload = {
+      role: "student",
+      identifier: roll.trim(),
+    };
+
+    console.log("SEND OTP URL:", url);
+    console.log("SEND OTP PAYLOAD:", payload);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const rawText = await response.text();
+    console.log("SEND OTP STATUS:", response.status);
+    console.log("SEND OTP RAW RESPONSE:", rawText);
+
+    let data = {};
+    try {
+      data = JSON.parse(rawText);
+    } catch (e) {
+      Alert.alert("Invalid Response", rawText);
       return;
     }
 
-    try {
-      setLoading(true);
-
-      const response = await fetch(`${BASE_URL}/send-otp`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          role: "student",
-          identifier: roll,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        Alert.alert("Error", data.message || "Failed to send OTP.");
-        return;
-      }
-
-      Alert.alert("OTP Sent", `OTP sent to ${data.user.email}`);
-
-      router.push({
-        pathname: "/login/student-otp",
-        params: {
-          identifier: roll,
-          email: data.user.email,
-        },
-      });
-    } catch (error) {
-      Alert.alert("Server Error", "Could not connect to backend server.");
-    } finally {
-      setLoading(false);
+    if (!response.ok || !data.success) {
+      Alert.alert("Error", data.message || "Failed to send OTP.");
+      return;
     }
-  };
+
+    Alert.alert("OTP Sent", `OTP sent to ${data.user.email}`);
+
+    router.push({
+      pathname: "/login/student-otp",
+      params: {
+        identifier: roll.trim(),
+        email: data.user.email,
+      },
+    });
+  } catch (error) {
+    console.log("SEND OTP FETCH ERROR:", error);
+    Alert.alert("Server Error", error.message || "Could not connect to backend server.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <View style={styles.container}>

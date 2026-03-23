@@ -4,23 +4,31 @@ import {
   Text,
   TextInput,
   Pressable,
-  StyleSheet,
   Alert,
   ActivityIndicator,
+  StyleSheet,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, router } from "expo-router";
 import { commonStyles } from "../../src/constants/authStyles";
 
-const BASE_URL = "http://10.145.204.10:5000";
+const BASE_URL = "http://10.145.149.215:5000";
 
 export default function StudentOtp() {
-  const { identifier, email } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+
+  const identifier = Array.isArray(params.identifier)
+    ? params.identifier[0]
+    : params.identifier;
+
+  const email = Array.isArray(params.email) ? params.email[0] : params.email;
+
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
 
   const handleVerifyOtp = async () => {
     if (!otp.trim()) {
-      Alert.alert("Missing OTP", "Please enter OTP.");
+      Alert.alert("Missing OTP", "Please enter the OTP.");
       return;
     }
 
@@ -42,7 +50,7 @@ export default function StudentOtp() {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        Alert.alert("Verification Failed", data.message || "Invalid OTP");
+        Alert.alert("Error", data.message || "Failed to verify OTP.");
         return;
       }
 
@@ -62,12 +70,43 @@ export default function StudentOtp() {
     }
   };
 
+  const handleResendOtp = async () => {
+    try {
+      setResending(true);
+
+      const response = await fetch(`${BASE_URL}/send-otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          role: "student",
+          identifier,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        Alert.alert("Error", data.message || "Failed to resend OTP.");
+        return;
+      }
+
+      Alert.alert("OTP Resent", `A new OTP was sent to ${data.user.email}`);
+    } catch (error) {
+      Alert.alert("Server Error", "Could not connect to backend server.");
+    } finally {
+      setResending(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.heading}>Verify OTP</Text>
-        <Text style={styles.subheading}>Enter the OTP sent to your email</Text>
-        <Text style={styles.email}>{email}</Text>
+        <Text style={styles.heading}>Verify Student OTP</Text>
+        <Text style={styles.subheading}>
+          Enter the OTP sent to {email || "your email"}
+        </Text>
 
         <TextInput
           style={styles.input}
@@ -79,12 +118,35 @@ export default function StudentOtp() {
           maxLength={6}
         />
 
-        <Pressable style={styles.button} onPress={handleVerifyOtp} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Verify & Login</Text>}
+        <Pressable
+          style={styles.button}
+          onPress={handleVerifyOtp}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Verify OTP</Text>
+          )}
+        </Pressable>
+
+        <Pressable onPress={handleResendOtp} disabled={resending}>
+          <Text style={styles.resendText}>
+            {resending ? "Resending OTP..." : "Resend OTP"}
+          </Text>
         </Pressable>
       </View>
     </View>
   );
 }
 
-const styles = commonStyles;
+const styles = StyleSheet.create({
+  ...commonStyles,
+  resendText: {
+    color: "#8FA8FF",
+    textAlign: "center",
+    marginTop: 16,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+});

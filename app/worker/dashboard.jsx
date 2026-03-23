@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -7,74 +7,187 @@ import {
   Pressable,
   Alert,
   TextInput,
+  RefreshControl,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
-import { colors } from "../../src/constants/colors";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
-  getComplaints,
-  markComplaintCompleted,
-  getOverallComplaintState,
-  searchAndFilterComplaints,
-  assignWorkerToComplaint,
-} from "../../src/store/complaintsStore";
+  getWorkerComplaints,
+  workerTakeoverComplaint,
+  workerCompleteComplaint,
+} from "../../src/services/api";
 
 export default function WorkerDashboard() {
-  const { name, hall, type, workerId } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const router = useRouter();
+
+  const name = Array.isArray(params.name) ? params.name[0] : params.name;
+  const hall = Array.isArray(params.hall) ? params.hall[0] : params.hall;
+  const type = Array.isArray(params.type) ? params.type[0] : params.type;
+  const workerId = Array.isArray(params.workerId)
+    ? params.workerId[0]
+    : params.workerId;
 
   const [searchText, setSearchText] = useState("");
   const [stateFilter, setStateFilter] = useState("all");
   const [viewMode, setViewMode] = useState("available");
+  const [complaints, setComplaints] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const allComplaints = getComplaints();
+  const loadComplaints = async (showLoader = true) => {
+    try {
+      if (showLoader) {
+        setLoading(true);
+      }
 
-  const workerComplaints = allComplaints.filter(
-    (complaint) =>
-      complaint.type !== "mess" &&
-      complaint.type === type &&
-      complaint.hall === hall
+      const response = await getWorkerComplaints(hall, type);
+
+      if (response.success) {
+        setComplaints(response.complaints || []);
+      } else {
+        setComplaints([]);
+        Alert.alert("Error", response.message || "Failed to load complaints.");
+      }
+    } catch (error) {
+      setComplaints([]);
+      Alert.alert("Error", error.message || "Failed to load complaints.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadComplaints();
+    }, [hall, type])
   );
 
-  const availableComplaints = workerComplaints.filter(
-    (complaint) => !complaint.assignedWorker
-  );
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadComplaints(false);
+  };
 
-  const myComplaints = workerComplaints.filter(
-    (complaint) => complaint.assignedWorker === name
-  );
+  const availableComplaints = useMemo(() => {
+    return complaints.filter((complaint) => !complaint.assignedWorker);
+  }, [complaints]);
 
-  const complaintsToShow =
-    viewMode === "my-tasks" ? myComplaints : workerComplaints;
+  const myComplaints = useMemo(() => {
+    return complaints.filter((complaint) => {
+      if (workerId && complaint.assignedWorkerId) {
+        return String(complaint.assignedWorkerId) === String(workerId);
+      }
+      return complaint.assignedWorker === name;
+    });
+  }, [complaints, workerId, name]);
+
+  const complaintsToShow = useMemo(() => {
+    if (viewMode === "my-tasks") return myComplaints;
+    if (viewMode === "available") return availableComplaints;
+    return complaints;
+  }, [viewMode, myComplaints, availableComplaints, complaints]);
 
   const filteredComplaints = useMemo(() => {
-    return searchAndFilterComplaints({
-      complaintsList: complaintsToShow,
-      searchText,
-      state: stateFilter,
+    const text = searchText.trim().toLowerCase();
+
+    return complaintsToShow.filter((complaint) => {
+      const overallState = getOverallComplaintState(complaint);
+
+      const matchesSearch =
+        !text ||
+        complaint.title?.toLowerCase().includes(text) ||
+        complaint.description?.toLowerCase().includes(text) ||
+        complaint.hall?.toLowerCase().includes(text) ||
+        complaint.category?.toLowerCase().includes(text) ||
+        complaint.studentName?.toLowerCase().includes(text) ||
+        complaint.rollNumber?.toLowerCase().includes(text) ||
+        complaint.assignedWorker?.toLowerCase().includes(text);
+
+      const matchesState =
+        stateFilter === "all" ||
+        overallState === stateFilter ||
+        (stateFilter === "pending" &&
+          (overallState === "open" || overallState === "pending"));
+
+      return matchesSearch && matchesState;
     });
   }, [complaintsToShow, searchText, stateFilter]);
 
-  const sortedComplaints = [...filteredComplaints].sort(
-    (a, b) => priorityRank(a.priority) - priorityRank(b.priority)
-  );
-
-  const handleTakeComplaint = (id) => {
-    const result = assignWorkerToComplaint(
-      id,
-      name,
-      workerId ? String(workerId) : String(name)
+  const sortedComplaints = useMemo(() => {
+    return [...filteredComplaints].sort(
+      (a, b) =>
+        priorityRank(a.priority || "medium") - priorityRank(b.priority || "medium")
     );
+  }, [filteredComplaints]);
 
-    if (!result.success) {
-      Alert.alert("Unavailable", result.message);
-      return;
+  const counts = useMemo(() => {
+    const sourceList = complaintsToShow;
+
+    return {
+      all: sourceList.length,
+      pending: sourceList.filter((complaint) => {
+        const state = getOverallComplaintState(complaint);
+        return state === "pending" || state === "open";
+      }).length,
+      conflict: sourceList.filter(
+        (complaint) => getOverallComplaintState(complaint) === "conflict"
+      ).length,
+      completed: sourceList.filter(
+        (complaint) => getOverallComplaintState(complaint) === "completed"
+      ).length,
+      escalated: sourceList.filter(
+        (complaint) => getOverallComplaintState(complaint) === "escalated"
+      ).length,
+    };
+  }, [complaintsToShow]);
+
+  const handleTakeComplaint = async (id) => {
+    try {
+      const result = await workerTakeoverComplaint(id, {
+        workerName: name,
+        workerId: workerId ? String(workerId) : String(name),
+        workerType: type,
+      });
+
+      if (!result.success) {
+        Alert.alert("Unavailable", result.message || "Could not take complaint.");
+        return;
+      }
+
+      Alert.alert("Success", "You have taken this complaint.");
+      loadComplaints(false);
+    } catch (error) {
+      Alert.alert("Error", error.message || "Could not take complaint.");
     }
-
-    Alert.alert("Success", "You have taken this complaint.");
   };
 
-  const handleMarkCompleted = (id) => {
-    markComplaintCompleted(id);
-    Alert.alert("Updated", "Complaint marked as completed.");
+  const handleMarkCompleted = async (id) => {
+    try {
+      const result = await workerCompleteComplaint(id);
+
+      if (!result.success) {
+        Alert.alert("Error", result.message || "Could not update complaint.");
+        return;
+      }
+
+      Alert.alert("Updated", "Complaint marked as completed.");
+      loadComplaints(false);
+    } catch (error) {
+      Alert.alert("Error", error.message || "Could not update complaint.");
+    }
+  };
+
+  const openComplaintDetails = (complaint) => {
+    router.push({
+      pathname: "/worker/complaint-details",
+      params: {
+        id: complaint._id,
+        name,
+        hall,
+        type,
+        workerId,
+      },
+    });
   };
 
   return (
@@ -82,13 +195,16 @@ export default function WorkerDashboard() {
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
     >
-      <Text style={styles.heading}>Worker Dashboard</Text>
+      <Text style={styles.heading}>{formatType(type) || "Worker"} Dashboard</Text>
 
       <View style={styles.profileCard}>
-        <Text style={styles.welcome}>Welcome, {name}</Text>
-        <Text style={styles.info}>Hall: {hall}</Text>
-        <Text style={styles.info}>Type: {formatType(type)}</Text>
+        <Text style={styles.welcome}>Welcome, {name || "Worker"}</Text>
+        <Text style={styles.info}>Hall: {hall || "Not Assigned"}</Text>
+        <Text style={styles.info}>Type: {formatType(type) || "Not Assigned"}</Text>
       </View>
 
       <View style={styles.toggleRow}>
@@ -103,6 +219,23 @@ export default function WorkerDashboard() {
             style={[
               styles.toggleText,
               viewMode === "available" && styles.activeToggleText,
+            ]}
+          >
+            Available
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[
+            styles.toggleButton,
+            viewMode === "all" && styles.activeToggle,
+          ]}
+          onPress={() => setViewMode("all")}
+        >
+          <Text
+            style={[
+              styles.toggleText,
+              viewMode === "all" && styles.activeToggleText,
             ]}
           >
             All Complaints
@@ -130,12 +263,16 @@ export default function WorkerDashboard() {
       <TextInput
         style={styles.searchInput}
         placeholder="Search complaints"
-        placeholderTextColor={colors.subText}
+        placeholderTextColor="#8C96C8"
         value={searchText}
         onChangeText={setSearchText}
       />
 
-      <View style={styles.filterRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+      >
         {["all", "pending", "conflict", "completed", "escalated"].map((item) => (
           <Pressable
             key={item}
@@ -151,29 +288,43 @@ export default function WorkerDashboard() {
                 stateFilter === item && styles.activeFilterText,
               ]}
             >
-              {capitalize(item)}
+              {capitalize(item)} ({counts[item] || 0})
             </Text>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
 
       <Text style={styles.sectionTitle}>
-        {viewMode === "my-tasks" ? "My Selected Complaints" : "Complaints"}
+        {viewMode === "my-tasks"
+          ? "My Selected Complaints"
+          : viewMode === "available"
+          ? "Available Complaints"
+          : "All Complaints"}
       </Text>
 
-      {sortedComplaints.length === 0 ? (
+      {loading ? (
+        <Text style={styles.emptyText}>Loading complaints...</Text>
+      ) : sortedComplaints.length === 0 ? (
         <Text style={styles.emptyText}>No complaints found.</Text>
       ) : (
         sortedComplaints.map((complaint) => {
           const overallState = getOverallComplaintState(complaint);
           const takenBySomeoneElse =
             complaint.assignedWorker && complaint.assignedWorker !== name;
-          const takenByMe = complaint.assignedWorker === name;
+          const takenByMe =
+            complaint.assignedWorker === name ||
+            (workerId &&
+              complaint.assignedWorkerId &&
+              String(complaint.assignedWorkerId) === String(workerId));
 
           return (
-            <View key={complaint.id} style={styles.card}>
+            <Pressable
+              key={complaint._id}
+              style={styles.card}
+              onPress={() => openComplaintDetails(complaint)}
+            >
               <View style={styles.topRow}>
-                <Text style={styles.cardType}>{formatType(complaint.type)}</Text>
+                <Text style={styles.cardType}>{formatType(complaint.category)}</Text>
 
                 <View style={styles.rightBadges}>
                   <View
@@ -185,11 +336,15 @@ export default function WorkerDashboard() {
                         ? styles.conflict
                         : overallState === "completed"
                         ? styles.completed
+                        : overallState === "open"
+                        ? styles.open
                         : styles.pending,
                     ]}
                   >
                     <Text style={styles.statusText}>
-                      {capitalize(overallState)}
+                      {capitalize(
+                        overallState === "open" ? "pending" : overallState
+                      )}
                     </Text>
                   </View>
 
@@ -213,7 +368,9 @@ export default function WorkerDashboard() {
               </View>
 
               <Text style={styles.title}>{complaint.title}</Text>
-              <Text style={styles.description}>{complaint.description}</Text>
+              <Text style={styles.description} numberOfLines={2}>
+                {complaint.description}
+              </Text>
 
               {complaint.roomNo && (
                 <Text style={styles.detail}>Room No: {complaint.roomNo}</Text>
@@ -223,8 +380,13 @@ export default function WorkerDashboard() {
                 <Text style={styles.detail}>Mobile: {complaint.mobileNo}</Text>
               )}
 
-              <Text style={styles.detail}>Submitted By: {complaint.studentName}</Text>
-              <Text style={styles.detail}>Roll: {complaint.roll}</Text>
+              <Text style={styles.detail}>
+                Submitted By: {complaint.studentName || "Not Available"}
+              </Text>
+
+              <Text style={styles.detail}>
+                Roll: {complaint.rollNumber || "Not Available"}
+              </Text>
 
               {complaint.assignedWorker ? (
                 <Text
@@ -236,7 +398,17 @@ export default function WorkerDashboard() {
                   Assigned Worker: {complaint.assignedWorker}
                 </Text>
               ) : (
-                <Text style={styles.waitingText}>No worker has taken this complaint yet.</Text>
+                <Text style={styles.waitingText}>
+                  No worker has taken this complaint yet.
+                </Text>
+              )}
+
+              {complaint.highlightedByWarden && (
+                <View style={styles.highlightBadge}>
+                  <Text style={styles.highlightBadgeText}>
+                    Highlighted by Warden
+                  </Text>
+                </View>
               )}
 
               {complaint.assignedAt && (
@@ -246,17 +418,22 @@ export default function WorkerDashboard() {
               )}
 
               <Text style={styles.detail}>
-                Worker Status: {complaint.workerStatus}
+                Worker Status: {capitalize(complaint.workerStatus || "pending")}
               </Text>
 
               <Text style={styles.detail}>
-                Student Status: {complaint.studentStatus}
+                Student Status: {capitalize(complaint.studentStatus || "pending")}
               </Text>
+
+              <Text style={styles.viewMore}>Tap to view full details</Text>
 
               {!complaint.assignedWorker && (
                 <Pressable
                   style={styles.takeButton}
-                  onPress={() => handleTakeComplaint(complaint.id)}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleTakeComplaint(complaint._id);
+                  }}
                 >
                   <Text style={styles.takeButtonText}>Take Over Complaint</Text>
                 </Pressable>
@@ -275,12 +452,15 @@ export default function WorkerDashboard() {
                 !complaint.escalated && (
                   <Pressable
                     style={styles.completeButton}
-                    onPress={() => handleMarkCompleted(complaint.id)}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleMarkCompleted(complaint._id);
+                    }}
                   >
                     <Text style={styles.completeButtonText}>Mark Completed</Text>
                   </Pressable>
                 )}
-            </View>
+            </Pressable>
           );
         })
       )}
@@ -288,10 +468,29 @@ export default function WorkerDashboard() {
   );
 }
 
+function getOverallComplaintState(complaint) {
+  if (complaint.highlightedByWarden || complaint.escalated) return "escalated";
+  if (complaint.studentStatus === "completed" || complaint.status === "completed") {
+    return "completed";
+  }
+  if (complaint.workerStatus === "completed" && complaint.status !== "completed") {
+    return "conflict";
+  }
+  if (
+    complaint.status === "assigned" ||
+    complaint.status === "in_progress" ||
+    complaint.workerStatus === "accepted"
+  ) {
+    return "open";
+  }
+  return "pending";
+}
+
 function formatType(type) {
-  if (type === "sports") return "Sports & Gym";
+  if (type === "sports" || type === "gym") return "Sports & Gym";
   if (type === "civil") return "Civil";
   if (type === "electricity") return "Electricity";
+  if (type === "mess") return "Mess";
   return type;
 }
 
@@ -310,116 +509,119 @@ function priorityRank(priority) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.white,
+    backgroundColor: "#0A0F2C",
   },
   contentContainer: {
-    padding: 20,
-    paddingTop: 40,
-    paddingBottom: 60,
+    paddingHorizontal: 18,
+    paddingTop: 48,
+    paddingBottom: 36,
+    marginTop: 20,
   },
   heading: {
     fontSize: 28,
     fontWeight: "800",
-    color: colors.text,
-    marginBottom: 20,
+    color: "#F5F7FF",
+    marginBottom: 18,
   },
   profileCard: {
-    backgroundColor: colors.secondary,
+    backgroundColor: "#141D6B",
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
+    borderColor: "#3147C9",
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 18,
+    marginBottom: 25,
   },
   welcome: {
     fontSize: 20,
     fontWeight: "700",
-    color: colors.text,
+    color: "#F5F7FF",
     marginBottom: 8,
   },
   info: {
     fontSize: 15,
-    color: colors.subText,
+    color: "#AEB8E8",
     marginBottom: 4,
   },
   toggleRow: {
     flexDirection: "row",
-    marginBottom: 14,
+    marginBottom: 19,
     gap: 8,
   },
   toggleButton: {
     flex: 1,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "#3147C9",
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
-    backgroundColor: colors.white,
+    backgroundColor: "#141D6B",
   },
   activeToggle: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: "#1E2D8F",
+    borderColor: "#4A63FF",
   },
   toggleText: {
-    color: colors.text,
+    color: "#D7DBF5",
     fontWeight: "600",
     fontSize: 13,
   },
   activeToggleText: {
-    color: colors.white,
+    color: "#FFFFFF",
   },
   searchInput: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "#3147C9",
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    marginBottom: 12,
-    color: colors.text,
+    marginBottom: 19,
+    backgroundColor: "#141D6B",
+    color: "#F5F7FF",
+    fontSize: 15,
   },
   filterRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: 8,
+    paddingRight: 12,
     marginBottom: 18,
   },
   filterChip: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "#3147C9",
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: colors.white,
+    backgroundColor: "#141D6B",
   },
   activeFilterChip: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: "#1E2D8F",
+    borderColor: "#4A63FF",
   },
   filterText: {
-    color: colors.text,
+    color: "#D7DBF5",
     fontSize: 13,
     fontWeight: "600",
   },
   activeFilterText: {
-    color: colors.white,
+    color: "#FFFFFF",
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: colors.text,
+    color: "#f5f7ffce",
     marginBottom: 14,
   },
   emptyText: {
     fontSize: 16,
-    color: colors.subText,
+    color: "#b0baec",
   },
   card: {
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
+    borderColor: "#3147C9",
+    borderRadius: 16,
     padding: 16,
     marginBottom: 14,
-    backgroundColor: colors.secondary,
+    backgroundColor: "#141D6B",
   },
   topRow: {
     flexDirection: "row",
@@ -430,7 +632,9 @@ const styles = StyleSheet.create({
   cardType: {
     fontSize: 15,
     fontWeight: "700",
-    color: colors.primary,
+    color: "#8FA8FF",
+    flex: 1,
+    marginRight: 10,
   },
   rightBadges: {
     alignItems: "flex-end",
@@ -438,24 +642,25 @@ const styles = StyleSheet.create({
   },
   detail: {
     fontSize: 14,
-    color: colors.subText,
+    color: "#AEB8E8",
     marginBottom: 4,
   },
   title: {
     fontSize: 18,
     fontWeight: "700",
-    color: colors.text,
+    color: "#F5F7FF",
     marginBottom: 6,
   },
   description: {
     fontSize: 15,
-    color: colors.text,
+    color: "#DCE3FF",
     marginBottom: 8,
+    lineHeight: 22,
   },
   waitingText: {
     marginBottom: 6,
     fontSize: 13,
-    color: "#6B7280",
+    color: "#AEB8E8",
     fontWeight: "600",
   },
   assignedText: {
@@ -467,7 +672,7 @@ const styles = StyleSheet.create({
     color: "#10B981",
   },
   assignedToOther: {
-    color: "#2563EB",
+    color: "#60A5FA",
   },
   statusBadge: {
     paddingHorizontal: 10,
@@ -491,6 +696,9 @@ const styles = StyleSheet.create({
   escalated: {
     backgroundColor: "#7C3AED",
   },
+  open: {
+    backgroundColor: "#3B82F6",
+  },
   priorityUrgent: {
     backgroundColor: "#DC2626",
   },
@@ -504,7 +712,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#6B7280",
   },
   statusText: {
-    color: "white",
+    color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "700",
   },
@@ -515,33 +723,54 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   takeButtonText: {
-    color: colors.white,
+    color: "#FFFFFF",
     textAlign: "center",
     fontSize: 15,
     fontWeight: "700",
   },
   disabledTakeButton: {
-    backgroundColor: "#9CA3AF",
+    backgroundColor: "#6B7280",
     paddingVertical: 12,
     borderRadius: 10,
     marginTop: 12,
   },
   disabledTakeButtonText: {
-    color: colors.white,
+    color: "#FFFFFF",
     textAlign: "center",
     fontSize: 15,
     fontWeight: "700",
   },
   completeButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: "#1E2D8F",
+    borderWidth: 1,
+    borderColor: "#4A63FF",
     paddingVertical: 12,
     borderRadius: 10,
     marginTop: 12,
   },
   completeButtonText: {
-    color: colors.white,
+    color: "#FFFFFF",
     textAlign: "center",
     fontSize: 15,
+    fontWeight: "700",
+  },
+  highlightBadge: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    backgroundColor: "#7C3AED",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  highlightBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  viewMore: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#8FA8FF",
     fontWeight: "700",
   },
 });

@@ -1,25 +1,34 @@
 const express = require("express");
 const cors = require("cors");
 const nodemailer = require("nodemailer");
+require("dotenv").config();
+
+const connectDB = require("./config/db");
 
 const students = require("./students");
 const councilMembers = require("./councilMembers");
 const workers = require("./workers");
 const wardens = require("./wardens");
 
+const complaintRoutes = require("./routes/complaintRoutes");
+const workerRoutes = require("./routes/workerRoutes");
+
 const app = express();
+const PORT = process.env.PORT || 5000;
+
+const otpStore = {};
+
+connectDB();
+
 app.use(cors());
 app.use(express.json());
 
-const PORT = 5000;
-const otpStore = {};
-
-app.get("/", (req, res) => {
-  res.send("Backend is working");
-});
-
-app.get("/test", (req, res) => {
-  res.json({ success: true, message: "Server is running fine" });
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
 });
 
 function generateOtp() {
@@ -27,25 +36,27 @@ function generateOtp() {
 }
 
 function findUser(role, identifier) {
+  const cleanIdentifier = identifier?.trim().toLowerCase();
+
   switch (role) {
     case "student":
       return students.find(
-        (item) => item.roll.toLowerCase() === identifier.trim().toLowerCase()
+        (item) => item.roll?.trim().toLowerCase() === cleanIdentifier
       );
 
     case "council":
       return councilMembers.find(
-        (item) => item.roll.toLowerCase() === identifier.trim().toLowerCase()
+        (item) => item.roll?.trim().toLowerCase() === cleanIdentifier
       );
 
     case "worker":
       return workers.find(
-        (item) => item.email.toLowerCase() === identifier.trim().toLowerCase()
+        (item) => item.email?.trim().toLowerCase() === cleanIdentifier
       );
 
     case "warden":
       return wardens.find(
-        (item) => item.email.toLowerCase() === identifier.trim().toLowerCase()
+        (item) => item.email?.trim().toLowerCase() === cleanIdentifier
       );
 
     default:
@@ -53,12 +64,22 @@ function findUser(role, identifier) {
   }
 }
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: "kapilchouhan1811@gmail.com",
-    pass: "vmok uyfb bejp szuh",
-  },
+app.get("/", (req, res) => {
+  res.send("Backend is working ✅");
+});
+
+app.get("/test", (req, res) => {
+  res.json({
+    success: true,
+    message: "Server is running fine",
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Server healthy",
+  });
 });
 
 app.post("/send-otp", async (req, res) => {
@@ -81,6 +102,13 @@ app.post("/send-otp", async (req, res) => {
       });
     }
 
+    if (!user.email) {
+      return res.status(400).json({
+        success: false,
+        message: "User email not found.",
+      });
+    }
+
     const otp = generateOtp();
     const key = `${role}_${identifier.trim().toLowerCase()}`;
 
@@ -92,22 +120,19 @@ app.post("/send-otp", async (req, res) => {
     };
 
     await transporter.sendMail({
-      from: "kapilchouhan1811@gmail.com",
+      from: process.env.EMAIL_USER,
       to: user.email,
       subject: "Hall Complaint Manager Login OTP",
       html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px;">
-          <h2 style="color:#1B2A72;">Hall Complaint Manager</h2>
-          <p>Hello ${user.name},</p>
-          <p>Your OTP for login is:</p>
-          <h1 style="letter-spacing: 4px; color: #1B2A72;">${otp}</h1>
-          <p>This OTP is valid for 5 minutes.</p>
-          <p>IIT Kharagpur</p>
-        </div>
+        <h2>Hall Complaint Manager</h2>
+        <p>Hello ${user.name || "User"},</p>
+        <p>Your OTP for login is:</p>
+        <h1 style="letter-spacing: 4px;">${otp}</h1>
+        <p>This OTP is valid for 5 minutes.</p>
       `,
     });
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       message: "OTP sent successfully.",
       role,
@@ -140,7 +165,7 @@ app.post("/verify-otp", (req, res) => {
     if (!record) {
       return res.status(404).json({
         success: false,
-        message: "No OTP found for this user.",
+        message: "No OTP found. Please request a new OTP.",
       });
     }
 
@@ -152,7 +177,7 @@ app.post("/verify-otp", (req, res) => {
       });
     }
 
-    if (record.otp !== otp) {
+    if (record.otp !== otp.trim()) {
       return res.status(400).json({
         success: false,
         message: "Invalid OTP.",
@@ -162,7 +187,7 @@ app.post("/verify-otp", (req, res) => {
     const user = record.user;
     delete otpStore[key];
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       message: "OTP verified successfully.",
       role,
@@ -173,10 +198,29 @@ app.post("/verify-otp", (req, res) => {
     return res.status(500).json({
       success: false,
       message: "OTP verification failed.",
+      error: error.message,
     });
   }
 });
 
+app.use("/api/complaints", complaintRoutes);
+app.use("/api/workers", workerRoutes);
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+  });
+});
+
+app.use((err, req, res, next) => {
+  console.error("Server error:", err);
+  res.status(500).json({
+    success: false,
+    message: "Internal server error",
+  });
+});
+
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port http://10.145.204.10:${PORT}`);
+  console.log(`Server running on http://10.145.149.215:${PORT}`);
 });

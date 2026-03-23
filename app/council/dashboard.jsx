@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -6,86 +6,180 @@ import {
   ScrollView,
   Pressable,
   TextInput,
+  RefreshControl,
+  Alert,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
-import { colors } from "../../src/constants/colors";
-import {
-  getComplaints,
-  getOverallComplaintState,
-  searchAndFilterComplaints,
-  priorityRank,
-} from "../../src/store/complaintsStore";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { getCouncilComplaints } from "../../src/services/api";
 
 export default function CouncilDashboard() {
-  const { name, hall, role } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const router = useRouter();
+
+  const name = Array.isArray(params.name) ? params.name[0] : params.name;
+  const hall = Array.isArray(params.hall) ? params.hall[0] : params.hall;
+
+  const porParam = Array.isArray(params.por) ? params.por[0] : params.por;
+  const roleParam = Array.isArray(params.role) ? params.role[0] : params.role;
+
+  const councilPor = normalizePor(porParam || roleParam || "");
 
   const [searchText, setSearchText] = useState("");
   const [stateFilter, setStateFilter] = useState("all");
   const [viewMode, setViewMode] = useState("active");
+  const [complaints, setComplaints] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const allComplaints = getComplaints();
+  const allowedCategories = useMemo(() => {
+    return getAllowedCategoriesByPor(councilPor);
+  }, [councilPor]);
 
-  let allowedTypes = [];
+  const loadComplaints = async (showLoader = true) => {
+    try {
+      if (showLoader) setLoading(true);
 
-  if (role === "GSec Maintenance") {
-    allowedTypes = ["civil", "electricity"];
-  }
+      const response = await getCouncilComplaints(hall, councilPor);
 
-  if (role === "GSec Sports") {
-    allowedTypes = ["sports"];
-  }
+      if (response.success) {
+        const allComplaints = response.complaints || [];
 
-  if (role === "GSec Mess") {
-    allowedTypes = ["mess"];
-  }
+        const porFilteredComplaints = allComplaints.filter((complaint) => {
+          const category = normalizeCategory(complaint.category);
+          if (allowedCategories.length === 0) return true;
+          return allowedCategories.includes(category);
+        });
 
-  const councilComplaints = allComplaints.filter(
-    (complaint) =>
-      complaint.hall === hall && allowedTypes.includes(complaint.type)
+        setComplaints(porFilteredComplaints);
+      } else {
+        setComplaints([]);
+        Alert.alert("Error", response.message || "Failed to load complaints");
+      }
+    } catch (error) {
+      setComplaints([]);
+      Alert.alert("Error", error.message || "Failed to load complaints");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadComplaints();
+  }, [hall, councilPor]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadComplaints(false);
+    }, [hall, councilPor])
   );
 
-  const activeComplaints = councilComplaints.filter((complaint) => {
-    const overallState = getOverallComplaintState(complaint);
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadComplaints(false);
+  };
 
-    if (complaint.type === "mess") {
-      return true;
-    }
+  const activeComplaints = useMemo(() => {
+    return complaints.filter((complaint) => getOverallComplaintState(complaint) !== "completed");
+  }, [complaints]);
 
-    return overallState !== "completed";
-  });
-
-  const historyComplaints = councilComplaints.filter((complaint) => {
-    if (complaint.type === "mess") return false;
-    return getOverallComplaintState(complaint) === "completed";
-  });
+  const historyComplaints = useMemo(() => {
+    return complaints.filter((complaint) => getOverallComplaintState(complaint) === "completed");
+  }, [complaints]);
 
   const complaintsToShow =
     viewMode === "history" ? historyComplaints : activeComplaints;
 
   const filteredComplaints = useMemo(() => {
-    return searchAndFilterComplaints({
-      complaintsList: complaintsToShow,
-      searchText,
-      state: stateFilter,
+    const text = searchText.trim().toLowerCase();
+
+    return complaintsToShow.filter((complaint) => {
+      const overallState = getOverallComplaintState(complaint);
+
+      const matchesSearch =
+        !text ||
+        complaint.title?.toLowerCase().includes(text) ||
+        complaint.description?.toLowerCase().includes(text) ||
+        complaint.hall?.toLowerCase().includes(text) ||
+        complaint.category?.toLowerCase().includes(text) ||
+        complaint.studentName?.toLowerCase().includes(text) ||
+        complaint.rollNumber?.toLowerCase().includes(text) ||
+        complaint.assignedWorker?.toLowerCase().includes(text) ||
+        complaint.assignedWorkerId?.toLowerCase().includes(text) ||
+        complaint.workerId?.toLowerCase().includes(text);
+
+      const matchesState =
+        stateFilter === "all" ||
+        overallState === stateFilter ||
+        (stateFilter === "pending" &&
+          (overallState === "open" || overallState === "pending"));
+
+      return matchesSearch && matchesState;
     });
   }, [complaintsToShow, searchText, stateFilter]);
 
-  const sortedComplaints = [...filteredComplaints].sort(
-    (a, b) => priorityRank(a.priority || "medium") - priorityRank(b.priority || "medium")
-  );
+  const sortedComplaints = useMemo(() => {
+    return [...filteredComplaints].sort(
+      (a, b) =>
+        priorityRank(a.priority || "medium") - priorityRank(b.priority || "medium")
+    );
+  }, [filteredComplaints]);
+
+  const counts = useMemo(() => {
+    const sourceList =
+      viewMode === "history" ? historyComplaints : activeComplaints;
+
+    return {
+      all: sourceList.length,
+      pending: sourceList.filter((complaint) => {
+        const state = getOverallComplaintState(complaint);
+        return state === "pending" || state === "open";
+      }).length,
+      conflict: sourceList.filter(
+        (complaint) => getOverallComplaintState(complaint) === "conflict"
+      ).length,
+      completed: sourceList.filter(
+        (complaint) => getOverallComplaintState(complaint) === "completed"
+      ).length,
+      escalated: sourceList.filter(
+        (complaint) => getOverallComplaintState(complaint) === "escalated"
+      ).length,
+    };
+  }, [viewMode, activeComplaints, historyComplaints]);
+
+  const openComplaintDetails = (complaint) => {
+    router.push({
+      pathname: "/council/complaint-details",
+      params: {
+        id: complaint._id,
+        por: councilPor,
+        role: councilPor,
+        hall,
+        name,
+      },
+    });
+  };
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
     >
-      <Text style={styles.heading}>Hall Council Dashboard</Text>
+      <Text style={styles.heading}>{hall || "Hall"} Council Dashboard</Text>
 
       <View style={styles.profileCard}>
-        <Text style={styles.welcome}>Welcome, {name}</Text>
-        <Text style={styles.info}>Hall: {hall}</Text>
-        <Text style={styles.info}>Role: {role}</Text>
+        <Text style={styles.welcome}>Welcome, {name || "Council Member"}</Text>
+        <Text style={styles.info}>Hall: {hall || "Not Assigned"}</Text>
+        <Text style={styles.info}>
+          POR: {councilPor || "Not Assigned"}
+        </Text>
+        <Text style={styles.info}>
+          Complaint Types: {getComplaintTypeLabel(councilPor)}
+        </Text>
       </View>
 
       <View style={styles.toggleRow}>
@@ -127,12 +221,16 @@ export default function CouncilDashboard() {
       <TextInput
         style={styles.searchInput}
         placeholder="Search complaints"
-        placeholderTextColor={colors.subText}
+        placeholderTextColor="#8C96C8"
         value={searchText}
         onChangeText={setSearchText}
       />
 
-      <View style={styles.filterRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+      >
         {["all", "pending", "conflict", "completed", "escalated"].map((item) => (
           <Pressable
             key={item}
@@ -148,46 +246,54 @@ export default function CouncilDashboard() {
                 stateFilter === item && styles.activeFilterText,
               ]}
             >
-              {capitalize(item)}
+              {capitalize(item)} ({counts[item] || 0})
             </Text>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
 
       <Text style={styles.sectionTitle}>
         {viewMode === "history" ? "Complaint History" : "Hall Complaints"}
       </Text>
 
-      {sortedComplaints.length === 0 ? (
+      {loading ? (
+        <Text style={styles.emptyText}>Loading complaints...</Text>
+      ) : sortedComplaints.length === 0 ? (
         <Text style={styles.emptyText}>No complaints available.</Text>
       ) : (
         sortedComplaints.map((complaint) => {
           const overallState = getOverallComplaintState(complaint);
+          const shownWorkerId =
+            complaint.assignedWorkerId || complaint.workerId || "";
 
           return (
-            <View key={complaint.id} style={styles.card}>
+            <Pressable
+              key={complaint._id}
+              style={styles.card}
+              onPress={() => openComplaintDetails(complaint)}
+            >
               <View style={styles.topRow}>
-                <Text style={styles.type}>{formatType(complaint.type)}</Text>
+                <Text style={styles.type}>{formatType(complaint.category)}</Text>
 
                 <View style={styles.rightBadges}>
-                  {complaint.type !== "mess" && (
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        overallState === "escalated"
-                          ? styles.escalated
-                          : overallState === "conflict"
-                          ? styles.conflict
-                          : overallState === "completed"
-                          ? styles.completed
-                          : styles.pending,
-                      ]}
-                    >
-                      <Text style={styles.statusText}>
-                        {capitalize(overallState)}
-                      </Text>
-                    </View>
-                  )}
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      overallState === "escalated"
+                        ? styles.escalated
+                        : overallState === "conflict"
+                        ? styles.conflict
+                        : overallState === "completed"
+                        ? styles.completed
+                        : overallState === "open"
+                        ? styles.open
+                        : styles.pending,
+                    ]}
+                  >
+                    <Text style={styles.statusText}>
+                      {capitalize(overallState)}
+                    </Text>
+                  </View>
 
                   <View
                     style={[
@@ -209,61 +315,47 @@ export default function CouncilDashboard() {
               </View>
 
               <Text style={styles.title}>{complaint.title}</Text>
-              <Text style={styles.description}>{complaint.description}</Text>
 
-              {complaint.roomNo && (
+              <Text style={styles.description} numberOfLines={2}>
+                {complaint.description}
+              </Text>
+
+              {complaint.roomNo ? (
                 <Text style={styles.detail}>Room: {complaint.roomNo}</Text>
-              )}
+              ) : null}
 
-              {complaint.mobileNo && (
+              {complaint.mobileNo ? (
                 <Text style={styles.detail}>Mobile: {complaint.mobileNo}</Text>
-              )}
+              ) : null}
 
-              {complaint.type !== "mess" && complaint.studentName && (
+              {complaint.studentName ? (
                 <Text style={styles.detail}>Student: {complaint.studentName}</Text>
-              )}
+              ) : null}
 
-              {complaint.type !== "mess" && complaint.roll && (
-                <Text style={styles.detail}>Roll No: {complaint.roll}</Text>
-              )}
+              {complaint.rollNumber ? (
+                <Text style={styles.detail}>Roll No: {complaint.rollNumber}</Text>
+              ) : null}
 
-              {complaint.type !== "mess" && complaint.assignedWorker && (
+              {complaint.assignedWorker ? (
                 <Text style={styles.assignedText}>
                   Assigned Worker: {complaint.assignedWorker}
                 </Text>
-              )}
+              ) : null}
 
-              {complaint.type !== "mess" && (
-                <>
-                  <Text style={styles.detail}>
-                    Worker Status: {complaint.workerStatus}
+              {shownWorkerId ? (
+                <Text style={styles.detail}>Worker ID: {shownWorkerId}</Text>
+              ) : null}
+
+              {complaint.highlightedByWarden ? (
+                <View style={styles.highlightBadge}>
+                  <Text style={styles.highlightBadgeText}>
+                    Highlighted by Warden
                   </Text>
-                  <Text style={styles.detail}>
-                    Student Status: {complaint.studentStatus}
-                  </Text>
-                </>
-              )}
+                </View>
+              ) : null}
 
-              {complaint.assignedAt && complaint.type !== "mess" && (
-                <Text style={styles.detail}>
-                  Taken At: {new Date(complaint.assignedAt).toLocaleString()}
-                </Text>
-              )}
-
-              {complaint.workerCompletedAt && complaint.type !== "mess" && (
-                <Text style={styles.detail}>
-                  Worker Completed:{" "}
-                  {new Date(complaint.workerCompletedAt).toLocaleString()}
-                </Text>
-              )}
-
-              {complaint.completedAt && complaint.type !== "mess" && (
-                <Text style={styles.detail}>
-                  Final Completion:{" "}
-                  {new Date(complaint.completedAt).toLocaleString()}
-                </Text>
-              )}
-            </View>
+              <Text style={styles.viewMore}>Tap to view full details</Text>
+            </Pressable>
           );
         })
       )}
@@ -271,12 +363,74 @@ export default function CouncilDashboard() {
   );
 }
 
+function normalizePor(por) {
+  const value = (por || "").trim().toLowerCase();
+
+  if (value === "gsec maintenance") return "GSec Maintenance";
+  if (value === "gsec mess") return "GSec Mess";
+  if (value === "gsec sports") return "GSec Sports";
+
+  return por || "";
+}
+
+function normalizeCategory(category) {
+  return (category || "").trim().toLowerCase();
+}
+
+function getAllowedCategoriesByPor(por) {
+  const normalizedPor = normalizePor(por);
+
+  if (normalizedPor === "GSec Maintenance") return ["civil", "electricity"];
+  if (normalizedPor === "GSec Mess") return ["mess"];
+  if (normalizedPor === "GSec Sports") return ["sports", "gym"];
+
+  return [];
+}
+
+function getComplaintTypeLabel(por) {
+  const normalizedPor = normalizePor(por);
+
+  if (normalizedPor === "GSec Maintenance") return "Civil, Electricity";
+  if (normalizedPor === "GSec Mess") return "Mess";
+  if (normalizedPor === "GSec Sports") return "Sports, Gym";
+
+  return "All";
+}
+
+function getOverallComplaintState(complaint) {
+  if (complaint.highlightedByWarden || complaint.escalated) return "escalated";
+  if (complaint.studentStatus === "completed" || complaint.status === "completed") {
+    return "completed";
+  }
+  if (complaint.workerStatus === "completed" && complaint.status !== "completed") {
+    return "conflict";
+  }
+  if (
+    complaint.status === "assigned" ||
+    complaint.status === "in_progress" ||
+    complaint.workerStatus === "accepted"
+  ) {
+    return "open";
+  }
+  return "pending";
+}
+
+function priorityRank(priority) {
+  if (priority === "urgent") return 1;
+  if (priority === "high") return 2;
+  if (priority === "medium") return 3;
+  return 4;
+}
+
 function formatType(type) {
-  if (type === "sports") return "Sports & Gym";
-  if (type === "civil") return "Civil";
-  if (type === "electricity") return "Electricity";
-  if (type === "mess") return "Mess";
-  return type;
+  const value = normalizeCategory(type);
+
+  if (value === "sports") return "Sports";
+  if (value === "gym") return "Gym";
+  if (value === "civil") return "Civil";
+  if (value === "electricity") return "Electricity";
+  if (value === "mess") return "Mess";
+  return capitalize(value || "other");
 }
 
 function capitalize(value) {
@@ -287,36 +441,37 @@ function capitalize(value) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.white,
+    backgroundColor: "#0A0F2C",
   },
   contentContainer: {
-    padding: 20,
-    paddingTop: 40,
-    paddingBottom: 60,
+    paddingHorizontal: 18,
+    paddingTop: 48,
+    paddingBottom: 36,
+    marginTop: 20,
   },
   heading: {
     fontSize: 28,
     fontWeight: "800",
-    color: colors.text,
-    marginBottom: 20,
+    color: "#F5F7FF",
+    marginBottom: 18,
   },
   profileCard: {
-    backgroundColor: colors.secondary,
+    backgroundColor: "#141D6B",
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
+    borderColor: "#3147C9",
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 18,
+    marginBottom: 25,
   },
   welcome: {
     fontSize: 20,
     fontWeight: "700",
-    color: colors.text,
+    color: "#F5F7FF",
     marginBottom: 8,
   },
   info: {
     fontSize: 15,
-    color: colors.subText,
+    color: "#AEB8E8",
     marginBottom: 4,
   },
   toggleRow: {
@@ -327,76 +482,78 @@ const styles = StyleSheet.create({
   toggleButton: {
     flex: 1,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "#3147C9",
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
-    backgroundColor: colors.white,
+    backgroundColor: "#141D6B",
   },
   activeToggle: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: "#1E2D8F",
+    borderColor: "#4A63FF",
   },
   toggleText: {
-    color: colors.text,
+    color: "#D7DBF5",
     fontWeight: "600",
     fontSize: 13,
   },
   activeToggleText: {
-    color: colors.white,
+    color: "#FFFFFF",
   },
   searchInput: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "#3147C9",
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 12,
-    color: colors.text,
+    backgroundColor: "#141D6B",
+    color: "#F5F7FF",
+    fontSize: 15,
   },
   filterRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: 8,
+    paddingRight: 12,
     marginBottom: 18,
   },
   filterChip: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "#3147C9",
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: colors.white,
+    backgroundColor: "#141D6B",
   },
   activeFilterChip: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: "#1E2D8F",
+    borderColor: "#4A63FF",
   },
   filterText: {
-    color: colors.text,
+    color: "#D7DBF5",
     fontSize: 13,
     fontWeight: "600",
   },
   activeFilterText: {
-    color: colors.white,
+    color: "#FFFFFF",
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: colors.text,
+    color: "#F5F7FF",
     marginBottom: 14,
   },
   emptyText: {
     fontSize: 16,
-    color: colors.subText,
+    color: "#AEB8E8",
   },
   card: {
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
+    borderColor: "#3147C9",
+    borderRadius: 16,
     padding: 16,
     marginBottom: 14,
-    backgroundColor: colors.secondary,
+    backgroundColor: "#141D6B",
   },
   topRow: {
     flexDirection: "row",
@@ -407,7 +564,9 @@ const styles = StyleSheet.create({
   type: {
     fontSize: 15,
     fontWeight: "700",
-    color: colors.primary,
+    color: "#8FA8FF",
+    flex: 1,
+    marginRight: 10,
   },
   rightBadges: {
     alignItems: "flex-end",
@@ -416,23 +575,30 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: "700",
-    color: colors.text,
+    color: "#F5F7FF",
     marginBottom: 6,
   },
   description: {
     fontSize: 15,
-    color: colors.text,
+    color: "#DCE3FF",
     marginBottom: 8,
+    lineHeight: 22,
   },
   detail: {
     fontSize: 14,
-    color: colors.subText,
+    color: "#AEB8E8",
     marginBottom: 4,
   },
   assignedText: {
     marginBottom: 6,
     fontSize: 13,
-    color: "#2563EB",
+    color: "#8FA8FF",
+    fontWeight: "700",
+  },
+  viewMore: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#8FA8FF",
     fontWeight: "700",
   },
   statusBadge: {
@@ -457,6 +623,9 @@ const styles = StyleSheet.create({
   escalated: {
     backgroundColor: "#7C3AED",
   },
+  open: {
+    backgroundColor: "#3B82F6",
+  },
   priorityUrgent: {
     backgroundColor: "#DC2626",
   },
@@ -470,7 +639,20 @@ const styles = StyleSheet.create({
     backgroundColor: "#6B7280",
   },
   statusText: {
-    color: "white",
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  highlightBadge: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    backgroundColor: "#7C3AED",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  highlightBadgeText: {
+    color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "700",
   },

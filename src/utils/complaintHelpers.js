@@ -13,6 +13,9 @@ export const createMessComplaint = ({
     priority,
     escalated: false,
     createdAt: new Date().toISOString(),
+
+    highlightedByWarden: false,
+    highlightedAt: null,
   };
 };
 
@@ -52,5 +55,8 @@ export const createTrackedComplaint = ({
     createdAt: new Date().toISOString(),
     workerCompletedAt: null,
     completedAt: null,
+
+    highlightedByWarden: false,
+    highlightedAt: null,
   };
 };

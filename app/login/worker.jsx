@@ -5,13 +5,15 @@ import {
 import { router } from "expo-router";
 import { commonStyles } from "../../src/constants/authStyles";
 
-const BASE_URL = "http://10.145.204.10:5000";
+const BASE_URL = "http://10.145.149.215:5000";
 export default function WorkerLogin() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSendOtp = async () => {
-    if (!email.trim()) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
       Alert.alert("Missing Email", "Please enter your email.");
       return;
     }
@@ -24,7 +26,7 @@ export default function WorkerLogin() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role: "worker",
-          identifier: email,
+          identifier: normalizedEmail,
         }),
       });
 
@@ -40,7 +42,7 @@ export default function WorkerLogin() {
       router.push({
         pathname: "/login/worker-otp",
         params: {
-          identifier: email,
+          identifier: normalizedEmail,
           email: data.user.email,
         },
       });

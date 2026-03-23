@@ -8,6 +8,10 @@ export const getComplaints = () => {
   return complaints;
 };
 
+export const getComplaintById = (id) => {
+  return complaints.find((item) => item.id === id);
+};
+
 export const markComplaintCompleted = (id) => {
   const complaint = complaints.find((item) => item.id === id);
   if (!complaint) return;
@@ -56,8 +60,6 @@ export const assignWorkerToComplaint = (id, workerName, workerId) => {
   complaint.assignedWorkerId = workerId;
   complaint.assignedAt = new Date().toISOString();
 
-  // IMPORTANT:
-  // Taking over should NOT mark it completed.
   complaint.workerStatus = "pending";
 
   return { success: true };
@@ -117,4 +119,14 @@ export const priorityRank = (priority) => {
   if (priority === "high") return 2;
   if (priority === "medium") return 3;
   return 4;
+};
+
+export const highlightComplaintByWarden = (id) => {
+  const complaint = complaints.find((item) => item.id === id);
+  if (!complaint) return { success: false, message: "Complaint not found." };
+
+  complaint.highlightedByWarden = true;
+  complaint.highlightedAt = new Date().toISOString();
+
+  return { success: true };
 };
