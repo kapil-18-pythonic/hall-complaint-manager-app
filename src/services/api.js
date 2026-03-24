@@ -15,10 +15,19 @@ export async function sendOtp(role, identifier) {
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ role, identifier }),
+    body: JSON.stringify({
+      role,
+      identifier,
+    }),
   });
 
-  return handleResponse(response);
+  const data = await response.json();
+
+  if (!response.ok || !data.success) {
+    throw new Error(data.message || "Failed to generate OTP");
+  }
+
+  return data;
 }
 
 export async function verifyOtp(role, identifier, otp) {
@@ -32,7 +41,6 @@ export async function verifyOtp(role, identifier, otp) {
 
   return handleResponse(response);
 }
-
 // COMPLAINTS
 export async function createComplaint(data) {
   const response = await fetch(`${BASE_URL}/api/complaints`, {

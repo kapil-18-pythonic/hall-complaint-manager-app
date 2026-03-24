@@ -12,6 +12,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.kapil.hallcomplaintapp",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -43,6 +44,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "826705ff-3d10-4ef3-ae62-25eb366a16d1"
+      }
     }
   }
 }

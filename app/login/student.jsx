@@ -17,7 +17,7 @@ export default function StudentLogin() {
   const [roll, setRoll] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSendOtp = async () => {
+const handleSendOtp = async () => {
   if (!roll.trim()) {
     Alert.alert("Missing Roll Number", "Please enter your roll number.");
     return;
@@ -60,18 +60,30 @@ export default function StudentLogin() {
       return;
     }
 
-    Alert.alert("OTP Sent", `OTP sent to ${data.user.email}`);
+    if (data.emailSent) {
+      Alert.alert("OTP Sent", `OTP sent to ${data.user.email}`);
+    } else {
+      Alert.alert(
+        "Test OTP",
+        `Email failed. Use this OTP for testing: ${data.otp}`
+      );
+    }
 
     router.push({
       pathname: "/login/student-otp",
       params: {
         identifier: roll.trim(),
         email: data.user.email,
+        otp: data.otp || "",
+        emailSent: data.emailSent ? "true" : "false",
       },
     });
   } catch (error) {
     console.log("SEND OTP FETCH ERROR:", error);
-    Alert.alert("Server Error", error.message || "Could not connect to backend server.");
+    Alert.alert(
+      "Server Error",
+      error.message || "Could not connect to backend server."
+    );
   } finally {
     setLoading(false);
   }
