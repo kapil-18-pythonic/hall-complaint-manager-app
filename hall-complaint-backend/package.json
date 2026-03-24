@@ -1,5 +1,8 @@
 {
   "scripts": {
     "start": "node server.js"
+  },
+  "dependencies": {
+    "resend": "^6.9.4"
   }
 }

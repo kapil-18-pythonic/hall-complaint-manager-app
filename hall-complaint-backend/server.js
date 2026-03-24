@@ -134,32 +134,37 @@ app.post("/send-otp", async (req, res) => {
     let emailError = null;
 
     try {
-      await transporter.sendMail({
-        from: process.env.EMAIL_USER,
+      const { data, error } = await resend.emails.send({
+        from: process.env.EMAIL_FROM,
         to: user.email,
         subject: "Hall Complaint Manager Login OTP",
         html: `
           <h2>Hall Complaint Manager</h2>
           <p>Hello ${user.name || "User"},</p>
-          <p>Your OTP for login is:</p>
-          <h1 style="letter-spacing: 4px;">${otp}</h1>
-          <p>This OTP is valid for 5 minutes.</p>
+          <p>Your OTP is:</p>
+          <h1>${otp}</h1>
+          <p>Valid for 5 minutes.</p>
         `,
       });
-      emailSent = true;
-    } catch (mailErr) {
-      console.error("Mail send failed:", mailErr.message);
-      emailError = mailErr.message;
+
+      if (error) {
+        emailError = error.message;
+      } else {
+        emailSent = true;
+      }
+    } catch (err) {
+      emailError = err.message;
+      console.error("Resend error:", err);
     }
 
     return res.status(200).json({
       success: true,
       message: emailSent
         ? "OTP sent successfully."
-        : "OTP generated successfully. Email sending failed, so OTP is returned for testing.",
+        : "OTP generated but email failed.",
       role,
       user,
-      otp,
+      otp, // keep for testing (remove later)
       emailSent,
       emailError,
     });
