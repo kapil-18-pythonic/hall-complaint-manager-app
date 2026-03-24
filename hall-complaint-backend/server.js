@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 
+const { Resend } = require("resend");
+
 const dns = require("dns");
 dns.setDefaultResultOrder("ipv4first");
 
@@ -19,6 +21,7 @@ const workerRoutes = require("./routes/workerRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const otpStore = {};
 
