@@ -113,12 +113,12 @@ export default function ComplaintDetails() {
               overallState === "completed"
                 ? styles.completed
                 : overallState === "conflict"
-                ? styles.conflict
-                : overallState === "escalated"
-                ? styles.escalated
-                : overallState === "open"
-                ? styles.open
-                : styles.pending,
+                  ? styles.conflict
+                  : overallState === "escalated"
+                    ? styles.escalated
+                    : overallState === "open"
+                      ? styles.open
+                      : styles.pending,
             ]}
           >
             <Text style={styles.statusText}>{formatState(overallState)}</Text>
@@ -197,12 +197,21 @@ export default function ComplaintDetails() {
         </Text>
       </View>
 
-      {complaint.photo && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Attached Photo</Text>
-          <Image source={{ uri: complaint.photo }} style={styles.image} />
-        </View>
-      )}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Attached Photo</Text>
+
+        {complaint?.photo ? (
+          <Image
+            source={{ uri: complaint.photo }}
+            style={styles.image}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.emptyPhotoBox}>
+            <Text style={styles.emptyPhotoText}>No photo attached</Text>
+          </View>
+        )}
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Warden Action</Text>
@@ -440,4 +449,17 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     opacity: 0.7,
   },
+  emptyPhotoBox: {
+    height: 220,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    marginTop: 12,
+  },
+
+  emptyPhotoText: {
+    color: "#9CA3AF",
+    fontSize: 15,
+  }
 });

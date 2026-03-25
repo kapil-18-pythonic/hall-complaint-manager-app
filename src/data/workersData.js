@@ -2,7 +2,7 @@ const workersData = [
   {
     name: "Rakesh",
     hall: "RK Hall",
-    email: "kapilchouhan1811@gmail.com",
+    email: "kc3806716@gmail.com",
     type: "civil",
   },
   {
