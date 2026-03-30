@@ -4,7 +4,7 @@ const Complaint = require("../models/Complaint");
 const router = express.Router();
 
 const porAccessMap = {
-  "gsec maintenance": ["civil", "electricity"],
+  "gsec maintenance": ["other", "civil", "electricity"],
   "gsec mess": ["mess"],
   "gsec sports": ["sports", "gym"],
 };
@@ -70,9 +70,15 @@ router.get("/council/view", async (req, res) => {
 
     const complaints = await Complaint.find(query).sort({ createdAt: -1 });
 
+    const sortedComplaints = complaints.sort((a, b) => {
+      if (a.category === "other" && b.category !== "other") return -1;
+      if (a.category !== "other" && b.category === "other") return 1;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
     return res.json({
       success: true,
-      complaints,
+      complaints: sortedComplaints,
     });
   } catch (error) {
     return res.status(500).json({

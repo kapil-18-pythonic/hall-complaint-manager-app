@@ -20,6 +20,14 @@ const complaintSchema = new mongoose.Schema(
       enum: ["civil", "electricity", "mess", "sports", "gym", "other"],
     },
 
+    // NEW
+    issueType: {
+      type: String,
+      enum: ["bullied", "medical", "other"],
+      default: "other",
+      trim: true,
+    },
+
     hall: {
       type: String,
       required: true,
