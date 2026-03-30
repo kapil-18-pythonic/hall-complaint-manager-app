@@ -30,6 +30,9 @@ export const createTrackedComplaint = ({
   studentName,
   roll,
   priority = "medium",
+
+  // NEW
+  issueType = "",
 }) => {
   return {
     id: `${type}-${Date.now()}`,
@@ -44,6 +47,9 @@ export const createTrackedComplaint = ({
     roll,
     priority,
     escalated: false,
+
+    // NEW (only meaningful for "other")
+    issueType: type === "other" ? issueType : "",
 
     workerStatus: "pending",
     studentStatus: "pending",

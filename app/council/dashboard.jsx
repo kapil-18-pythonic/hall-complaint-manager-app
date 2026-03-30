@@ -119,10 +119,17 @@ export default function CouncilDashboard() {
   }, [complaintsToShow, searchText, stateFilter]);
 
   const sortedComplaints = useMemo(() => {
-    return [...filteredComplaints].sort(
-      (a, b) =>
-        priorityRank(a.priority || "medium") - priorityRank(b.priority || "medium")
-    );
+    return [...filteredComplaints].sort((a, b) => {
+      // 🚨 First priority: "other" category
+      if (a.category === "other" && b.category !== "other") return -1;
+      if (a.category !== "other" && b.category === "other") return 1;
+
+      // Then priority-based sorting
+      return (
+        priorityRank(a.priority || "medium") -
+        priorityRank(b.priority || "medium")
+      );
+    });
   }, [filteredComplaints]);
 
   const counts = useMemo(() => {
@@ -282,12 +289,12 @@ export default function CouncilDashboard() {
                       overallState === "escalated"
                         ? styles.escalated
                         : overallState === "conflict"
-                        ? styles.conflict
-                        : overallState === "completed"
-                        ? styles.completed
-                        : overallState === "open"
-                        ? styles.open
-                        : styles.pending,
+                          ? styles.conflict
+                          : overallState === "completed"
+                            ? styles.completed
+                            : overallState === "open"
+                              ? styles.open
+                              : styles.pending,
                     ]}
                   >
                     <Text style={styles.statusText}>
@@ -301,10 +308,10 @@ export default function CouncilDashboard() {
                       complaint.priority === "urgent"
                         ? styles.priorityUrgent
                         : complaint.priority === "high"
-                        ? styles.priorityHigh
-                        : complaint.priority === "medium"
-                        ? styles.priorityMedium
-                        : styles.priorityLow,
+                          ? styles.priorityHigh
+                          : complaint.priority === "medium"
+                            ? styles.priorityMedium
+                            : styles.priorityLow,
                     ]}
                   >
                     <Text style={styles.statusText}>
@@ -380,7 +387,7 @@ function normalizeCategory(category) {
 function getAllowedCategoriesByPor(por) {
   const normalizedPor = normalizePor(por);
 
-  if (normalizedPor === "GSec Maintenance") return ["civil", "electricity"];
+  if (normalizedPor === "GSec Maintenance") return ["other", "civil", "electricity"];
   if (normalizedPor === "GSec Mess") return ["mess"];
   if (normalizedPor === "GSec Sports") return ["sports", "gym"];
 
@@ -390,7 +397,7 @@ function getAllowedCategoriesByPor(por) {
 function getComplaintTypeLabel(por) {
   const normalizedPor = normalizePor(por);
 
-  if (normalizedPor === "GSec Maintenance") return "Civil, Electricity";
+  if (normalizedPor === "GSec Maintenance") return "Other, Civil, Electricity";
   if (normalizedPor === "GSec Mess") return "Mess";
   if (normalizedPor === "GSec Sports") return "Sports, Gym";
 

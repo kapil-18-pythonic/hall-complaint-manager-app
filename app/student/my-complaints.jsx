@@ -144,12 +144,12 @@ export default function MyComplaints() {
                         overallState === "escalated"
                           ? styles.escalated
                           : overallState === "conflict"
-                          ? styles.conflict
-                          : overallState === "completed"
-                          ? styles.completed
-                          : overallState === "open"
-                          ? styles.open
-                          : styles.pending,
+                            ? styles.conflict
+                            : overallState === "completed"
+                              ? styles.completed
+                              : overallState === "open"
+                                ? styles.open
+                                : styles.pending,
                       ]}
                     >
                       <Text style={styles.statusText}>
@@ -165,10 +165,10 @@ export default function MyComplaints() {
                         complaint.priority === "urgent"
                           ? styles.priorityUrgent
                           : complaint.priority === "high"
-                          ? styles.priorityHigh
-                          : complaint.priority === "medium"
-                          ? styles.priorityMedium
-                          : styles.priorityLow,
+                            ? styles.priorityHigh
+                            : complaint.priority === "medium"
+                              ? styles.priorityMedium
+                              : styles.priorityLow,
                       ]}
                     >
                       <Text style={styles.statusText}>
@@ -188,7 +188,7 @@ export default function MyComplaints() {
                 </Text>
               )}
 
-              {complaint.category !== "mess" && (
+              {complaint.category !== "mess" && complaint.category !== "other" && (
                 <>
                   {complaint.workerStatus !== "completed" ? (
                     <View style={styles.disabledBox}>
@@ -282,10 +282,10 @@ export default function MyComplaints() {
                       complaint.priority === "urgent"
                         ? styles.priorityUrgent
                         : complaint.priority === "high"
-                        ? styles.priorityHigh
-                        : complaint.priority === "medium"
-                        ? styles.priorityMedium
-                        : styles.priorityLow,
+                          ? styles.priorityHigh
+                          : complaint.priority === "medium"
+                            ? styles.priorityMedium
+                            : styles.priorityLow,
                     ]}
                   >
                     <Text style={styles.statusText}>
@@ -349,6 +349,7 @@ function formatType(type) {
   if (type === "civil") return "🧱 Civil";
   if (type === "electricity") return "💡 Electricity";
   if (type === "mess") return "🍽️ Mess";
+  if (type === "other") return "🚨 Other";
   return capitalize(type || "other");
 }
 

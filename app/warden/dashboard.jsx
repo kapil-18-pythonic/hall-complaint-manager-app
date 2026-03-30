@@ -26,6 +26,14 @@ export default function WardenDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  const sortComplaintsWithOtherFirst = (items = []) => {
+    return [...items].sort((a, b) => {
+      if (a.category === "other" && b.category !== "other") return -1;
+      if (a.category !== "other" && b.category === "other") return 1;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+  };
+
   const loadComplaints = async (showLoader = true) => {
     try {
       if (showLoader) setLoading(true);
@@ -33,7 +41,7 @@ export default function WardenDashboard() {
       const response = await getComplaintsByHall(hall);
 
       if (response.success) {
-        setComplaints(response.complaints || []);
+        setComplaints(sortComplaintsWithOtherFirst(response.complaints || []));
       } else {
         setComplaints([]);
         Alert.alert("Error", response.message || "Failed to load complaints.");
@@ -272,6 +280,7 @@ function formatType(type) {
   if (type === "civil") return "Civil";
   if (type === "electricity") return "Electricity";
   if (type === "mess") return "Mess";
+  if (type === "other") return "Other";
   return type;
 }
 

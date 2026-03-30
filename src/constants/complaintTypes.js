@@ -3,4 +3,5 @@ export const complaintTypes = [
   { id: 2, title: "🧱 Civil", route: "/student/complaints/civil" },
   { id: 3, title: "💡 Electricity", route: "/student/complaints/electricity" },
   { id: 4, title: "🏋️ Sports & Gym", route: "/student/complaints/sports" },
+  { id: 5, title: "🚨 Other", route: "/student/complaints/other" },
 ];
