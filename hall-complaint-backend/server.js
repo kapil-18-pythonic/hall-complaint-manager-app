@@ -1,23 +1,31 @@
 const express = require("express");
 const cors = require("cors");
-
 const { Resend } = require("resend");
 
 const dns = require("dns");
 dns.setDefaultResultOrder("ipv4first");
 
-const nodemailer = require("nodemailer");
 require("dotenv").config();
 
 const connectDB = require("./config/db");
 
+// Old fallback files (keep for now)
 const students = require("./students");
 const councilMembers = require("./councilMembers");
 const workers = require("./workers");
 const wardens = require("./wardens");
 
+// New MongoDB models
+const Student = require("./models/Student");
+const Worker = require("./models/Worker");
+const CouncilMember = require("./models/CouncilMember");
+
+// Existing routes
 const complaintRoutes = require("./routes/complaintRoutes");
 const workerRoutes = require("./routes/workerRoutes");
+
+// New route for warden member management
+const memberManagementRoutes = require("./routes/memberManagementRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -30,45 +38,58 @@ connectDB();
 app.use(cors());
 app.use(express.json());
 
-
-
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-});
-
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-function findUser(role, identifier) {
+function escapeRegex(value = "") {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// DB-first, old-file fallback
+async function findUser(role, identifier) {
   const cleanIdentifier = identifier?.trim().toLowerCase();
+
+  if (!cleanIdentifier) return null;
+
+  let dbUser = null;
 
   switch (role) {
     case "student":
+      dbUser = await Student.findOne({
+        roll: { $regex: `^${escapeRegex(cleanIdentifier)}$`, $options: "i" },
+      }).lean();
+
+      if (dbUser) return dbUser;
+
       return students.find(
         (item) => item.roll?.trim().toLowerCase() === cleanIdentifier
       );
 
     case "council":
+      dbUser = await CouncilMember.findOne({
+        roll: { $regex: `^${escapeRegex(cleanIdentifier)}$`, $options: "i" },
+      }).lean();
+
+      if (dbUser) return dbUser;
+
       return councilMembers.find(
         (item) => item.roll?.trim().toLowerCase() === cleanIdentifier
       );
 
     case "worker":
+      dbUser = await Worker.findOne({
+        email: { $regex: `^${escapeRegex(cleanIdentifier)}$`, $options: "i" },
+      }).lean();
+
+      if (dbUser) return dbUser;
+
       return workers.find(
         (item) => item.email?.trim().toLowerCase() === cleanIdentifier
       );
 
     case "warden":
+      // keeping warden static for now
       return wardens.find(
         (item) => item.email?.trim().toLowerCase() === cleanIdentifier
       );
@@ -107,7 +128,7 @@ app.post("/send-otp", async (req, res) => {
       });
     }
 
-    const user = findUser(role, identifier);
+    const user = await findUser(role, identifier);
 
     if (!user) {
       return res.status(404).json({
@@ -137,7 +158,7 @@ app.post("/send-otp", async (req, res) => {
     let emailError = null;
 
     try {
-      const { data, error } = await resend.emails.send({
+      const { error } = await resend.emails.send({
         from: process.env.EMAIL_FROM,
         to: user.email,
         subject: "Hall Complaint Manager Login OTP",
@@ -167,7 +188,7 @@ app.post("/send-otp", async (req, res) => {
         : "OTP generated but email failed.",
       role,
       user,
-      otp, // keep for testing (remove later)
+      otp, // keep for testing for now
       emailSent,
       emailError,
     });
@@ -236,8 +257,10 @@ app.post("/verify-otp", (req, res) => {
   }
 });
 
+// Routes
 app.use("/api/complaints", complaintRoutes);
 app.use("/api/workers", workerRoutes);
+app.use("/api/members", memberManagementRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
