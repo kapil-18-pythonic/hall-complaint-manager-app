@@ -113,6 +113,17 @@ export default function WardenDashboard() {
     });
   };
 
+  const openManageMembers = () => {
+    router.push({
+      pathname: "/warden/manage-members",
+      params: {
+        hall,
+        name,
+        designation,
+      },
+    });
+  };
+
   return (
     <ScrollView
       style={styles.container}
@@ -122,14 +133,42 @@ export default function WardenDashboard() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <Text style={styles.heading}>Warden Dashboard</Text>
+      <View style={styles.headerRow}>
+        <View>
+          <Text style={styles.heading}>Warden Dashboard</Text>
+          <Text style={styles.subHeading}>{hall || "Hall Not Assigned"}</Text>
+        </View>
+      </View>
 
       <View style={styles.profileCard}>
-        <Text style={styles.welcome}>Welcome, {name || "Warden"}</Text>
-        <Text style={styles.info}>Hall: {hall || "Not Assigned"}</Text>
-        <Text style={styles.info}>
-          Designation: {designation || "Warden"}
-        </Text>
+        <View style={styles.profileTopRow}>
+          <View style={styles.profileAvatar}>
+            <Text style={styles.profileAvatarText}>
+              {(name || "W").charAt(0).toUpperCase()}
+            </Text>
+          </View>
+
+          <View style={styles.profileTextWrap}>
+            <Text style={styles.welcome}>Welcome, {name || "Warden"}</Text>
+            <Text style={styles.info}>
+              Designation: {designation || "Warden"}
+            </Text>
+            <Text style={styles.info}>Hall: {hall || "Not Assigned"}</Text>
+          </View>
+        </View>
+
+        <View style={styles.actionRow}>
+          <Pressable style={styles.primaryActionButton} onPress={openManageMembers}>
+            <Text style={styles.primaryActionText}>Manage Hall Members</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.secondaryActionButton}
+            onPress={() => loadComplaints(true)}
+          >
+            <Text style={styles.secondaryActionText}>Refresh Data</Text>
+          </Pressable>
+        </View>
       </View>
 
       <Text style={styles.sectionTitle}>Complaint Overview</Text>
@@ -153,7 +192,7 @@ export default function WardenDashboard() {
           ]}
           onPress={() => setActiveFilter("pending")}
         >
-          <Text style={[styles.statValue, { color: "#F59E0B" }]}>
+          <Text style={[styles.statValue, styles.pendingText]}>
             {pendingComplaints}
           </Text>
           <Text style={styles.statLabel}>Pending</Text>
@@ -166,7 +205,7 @@ export default function WardenDashboard() {
           ]}
           onPress={() => setActiveFilter("completed")}
         >
-          <Text style={[styles.statValue, { color: "#10B981" }]}>
+          <Text style={[styles.statValue, styles.completedText]}>
             {completedComplaints}
           </Text>
           <Text style={styles.statLabel}>Completed</Text>
@@ -179,27 +218,36 @@ export default function WardenDashboard() {
           ]}
           onPress={() => setActiveFilter("conflicts")}
         >
-          <Text style={[styles.statValue, { color: "#EF4444" }]}>
+          <Text style={[styles.statValue, styles.conflictText]}>
             {conflictComplaints}
           </Text>
           <Text style={styles.statLabel}>Conflicts</Text>
         </Pressable>
       </View>
 
-      <Text style={styles.sectionTitle}>
-        {activeFilter === "total"
-          ? "All Complaints"
-          : activeFilter === "pending"
-          ? "Pending Complaints"
-          : activeFilter === "completed"
-          ? "Completed Complaints"
-          : "Conflict Complaints"}
-      </Text>
+      <View style={styles.listHeaderRow}>
+        <Text style={styles.sectionTitle}>
+          {activeFilter === "total"
+            ? "All Complaints"
+            : activeFilter === "pending"
+            ? "Pending Complaints"
+            : activeFilter === "completed"
+            ? "Completed Complaints"
+            : "Conflict Complaints"}
+        </Text>
+
+        <Text style={styles.countText}>{filteredComplaints.length} items</Text>
+      </View>
 
       {loading ? (
         <Text style={styles.emptyText}>Loading complaints...</Text>
       ) : filteredComplaints.length === 0 ? (
-        <Text style={styles.emptyText}>No complaints available.</Text>
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyTitle}>No complaints available</Text>
+          <Text style={styles.emptySubtext}>
+            Pull to refresh or check another filter.
+          </Text>
+        </View>
       ) : (
         filteredComplaints.map((complaint) => {
           const overallState = getOverallComplaintState(complaint);
@@ -239,13 +287,14 @@ export default function WardenDashboard() {
                 {complaint.description}
               </Text>
 
-              <Text style={styles.detail}>
-                Student: {complaint.studentName || "Not Available"}
-              </Text>
-
-              <Text style={styles.detail}>
-                Priority: {capitalize(complaint.priority || "medium")}
-              </Text>
+              <View style={styles.metaRow}>
+                <Text style={styles.detail}>
+                  Student: {complaint.studentName || "Not Available"}
+                </Text>
+                <Text style={styles.detail}>
+                  Priority: {capitalize(complaint.priority || "medium")}
+                </Text>
+              </View>
 
               <Text style={styles.viewMore}>Tap to view full details</Text>
             </Pressable>
@@ -258,10 +307,16 @@ export default function WardenDashboard() {
 
 function getOverallComplaintState(complaint) {
   if (complaint.highlightedByWarden || complaint.escalated) return "escalated";
-  if (complaint.studentStatus === "completed" || complaint.status === "completed") {
+  if (
+    complaint.studentStatus === "completed" ||
+    complaint.status === "completed"
+  ) {
     return "completed";
   }
-  if (complaint.workerStatus === "completed" && complaint.status !== "completed") {
+  if (
+    complaint.workerStatus === "completed" &&
+    complaint.status !== "completed"
+  ) {
     return "conflict";
   }
   if (
@@ -308,30 +363,91 @@ const styles = StyleSheet.create({
     paddingBottom: 36,
     marginTop: 20,
   },
+  headerRow: {
+    marginBottom: 18,
+  },
   heading: {
     fontSize: 28,
     fontWeight: "800",
     color: "#F5F7FF",
-    marginBottom: 20,
+  },
+  subHeading: {
+    marginTop: 6,
+    fontSize: 15,
+    color: "#9FB0FF",
+    fontWeight: "600",
   },
   profileCard: {
     backgroundColor: "#141D6B",
     borderWidth: 1,
     borderColor: "#3147C9",
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
     marginBottom: 24,
+  },
+  profileTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  profileAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#2E46D8",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  profileAvatarText: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  profileTextWrap: {
+    flex: 1,
   },
   welcome: {
     fontSize: 20,
     fontWeight: "700",
     color: "#F5F7FF",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   info: {
-    fontSize: 15,
+    fontSize: 14,
     color: "#AEB8E8",
-    marginBottom: 4,
+    marginBottom: 3,
+  },
+  actionRow: {
+    marginTop: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  primaryActionButton: {
+    flex: 1,
+    backgroundColor: "#3B5BFF",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  primaryActionText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  secondaryActionButton: {
+    flex: 1,
+    backgroundColor: "#0F1A55",
+    borderWidth: 1,
+    borderColor: "#3147C9",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  secondaryActionText: {
+    color: "#DCE3FF",
+    fontSize: 14,
+    fontWeight: "700",
   },
   sectionTitle: {
     fontSize: 20,
@@ -370,6 +486,44 @@ const styles = StyleSheet.create({
     color: "#D7DBF5",
     fontWeight: "600",
   },
+  pendingText: {
+    color: "#F59E0B",
+  },
+  completedText: {
+    color: "#10B981",
+  },
+  conflictText: {
+    color: "#EF4444",
+  },
+  listHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  countText: {
+    color: "#AEB8E8",
+    fontSize: 13,
+    fontWeight: "600",
+    marginBottom: 14,
+  },
+  emptyCard: {
+    backgroundColor: "#141D6B",
+    borderWidth: 1,
+    borderColor: "#3147C9",
+    borderRadius: 16,
+    padding: 18,
+  },
+  emptyTitle: {
+    color: "#F5F7FF",
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  emptySubtext: {
+    color: "#AEB8E8",
+    fontSize: 14,
+    lineHeight: 20,
+  },
   emptyText: {
     fontSize: 16,
     color: "#AEB8E8",
@@ -402,8 +556,11 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 15,
     color: "#DCE3FF",
-    marginBottom: 8,
+    marginBottom: 10,
     lineHeight: 22,
+  },
+  metaRow: {
+    marginBottom: 2,
   },
   detail: {
     fontSize: 14,

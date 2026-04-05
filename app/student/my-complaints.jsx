@@ -46,9 +46,7 @@ export default function MyComplaints() {
           return complaint.hall === hall;
         }
 
-        return (
-          complaint.rollNumber === roll && complaint.studentName === name
-        );
+        return complaint.rollNumber === roll && complaint.studentName === name;
       });
 
       setComplaints(visibleComplaints);
@@ -103,6 +101,7 @@ export default function MyComplaints() {
   const canStudentConfirmResolved = (complaint) => {
     return (
       complaint.category !== "mess" &&
+      complaint.category !== "other" &&
       complaint.workerStatus === "completed" &&
       complaint.studentStatus !== "completed"
     );
@@ -144,12 +143,12 @@ export default function MyComplaints() {
                         overallState === "escalated"
                           ? styles.escalated
                           : overallState === "conflict"
-                            ? styles.conflict
-                            : overallState === "completed"
-                              ? styles.completed
-                              : overallState === "open"
-                                ? styles.open
-                                : styles.pending,
+                          ? styles.conflict
+                          : overallState === "completed"
+                          ? styles.completed
+                          : overallState === "open"
+                          ? styles.open
+                          : styles.pending,
                       ]}
                     >
                       <Text style={styles.statusText}>
@@ -165,10 +164,10 @@ export default function MyComplaints() {
                         complaint.priority === "urgent"
                           ? styles.priorityUrgent
                           : complaint.priority === "high"
-                            ? styles.priorityHigh
-                            : complaint.priority === "medium"
-                              ? styles.priorityMedium
-                              : styles.priorityLow,
+                          ? styles.priorityHigh
+                          : complaint.priority === "medium"
+                          ? styles.priorityMedium
+                          : styles.priorityLow,
                       ]}
                     >
                       <Text style={styles.statusText}>
@@ -188,26 +187,24 @@ export default function MyComplaints() {
                 </Text>
               )}
 
-              {complaint.category !== "mess" && complaint.category !== "other" && (
-                <>
-                  {complaint.workerStatus !== "completed" ? (
-                    <View style={styles.disabledBox}>
-                      <Text style={styles.disabledText}>
-                        Waiting for worker to complete this complaint
-                      </Text>
-                    </View>
-                  ) : complaint.studentStatus !== "completed" ? (
-                    <Pressable
-                      style={styles.confirmButton}
-                      onPress={() => handleConfirmResolved(complaint._id)}
-                    >
-                      <Text style={styles.confirmButtonText}>
-                        Confirm Resolved
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                </>
-              )}
+              {complaint.category !== "mess" &&
+                complaint.category !== "other" &&
+                (complaint.workerStatus !== "completed" ? (
+                  <View style={styles.disabledBox}>
+                    <Text style={styles.disabledText}>
+                      Waiting for worker to complete this complaint
+                    </Text>
+                  </View>
+                ) : canStudentConfirmResolved(complaint) ? (
+                  <Pressable
+                    style={styles.confirmButton}
+                    onPress={() => handleConfirmResolved(complaint._id)}
+                  >
+                    <Text style={styles.confirmButtonText}>
+                      Confirm Resolved
+                    </Text>
+                  </Pressable>
+                ) : null)}
 
               {complaint.assignedAt && complaint.category !== "mess" && (
                 <Text style={styles.detail}>
@@ -240,17 +237,6 @@ export default function MyComplaints() {
                   )}
                 </View>
               )}
-
-              {canStudentConfirmResolved(complaint) && (
-                <Pressable
-                  style={styles.confirmButton}
-                  onPress={() => handleConfirmResolved(complaint._id)}
-                >
-                  <Text style={styles.confirmButtonText}>
-                    Confirm Resolved
-                  </Text>
-                </Pressable>
-              )}
             </View>
           );
         })
@@ -266,9 +252,7 @@ export default function MyComplaints() {
         historyComplaints.map((complaint) => (
           <View key={complaint._id} style={styles.card}>
             <View style={styles.topRow}>
-              <Text style={styles.type}>
-                {formatType(complaint.category)}
-              </Text>
+              <Text style={styles.type}>{formatType(complaint.category)}</Text>
 
               {complaint.category !== "mess" && (
                 <View style={styles.rightBadges}>
@@ -282,10 +266,10 @@ export default function MyComplaints() {
                       complaint.priority === "urgent"
                         ? styles.priorityUrgent
                         : complaint.priority === "high"
-                          ? styles.priorityHigh
-                          : complaint.priority === "medium"
-                            ? styles.priorityMedium
-                            : styles.priorityLow,
+                        ? styles.priorityHigh
+                        : complaint.priority === "medium"
+                        ? styles.priorityMedium
+                        : styles.priorityLow,
                     ]}
                   >
                     <Text style={styles.statusText}>
@@ -327,10 +311,16 @@ export default function MyComplaints() {
 
 function getOverallComplaintState(complaint) {
   if (complaint.highlightedByWarden || complaint.escalated) return "escalated";
-  if (complaint.studentStatus === "completed" || complaint.status === "completed") {
+  if (
+    complaint.studentStatus === "completed" ||
+    complaint.status === "completed"
+  ) {
     return "completed";
   }
-  if (complaint.workerStatus === "completed" && complaint.status !== "completed") {
+  if (
+    complaint.workerStatus === "completed" &&
+    complaint.status !== "completed"
+  ) {
     return "conflict";
   }
   if (
