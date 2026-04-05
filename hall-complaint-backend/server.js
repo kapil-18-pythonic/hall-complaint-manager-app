@@ -17,7 +17,7 @@ const wardens = require("./wardens");
 
 // New MongoDB models
 const Student = require("./models/Student");
-const Worker = require("./models/Workers");
+const Worker = require("./models/Worker");
 const CouncilMember = require("./models/CouncilMember");
 
 // Existing routes
