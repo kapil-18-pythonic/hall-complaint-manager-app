@@ -14,13 +14,13 @@ const students = require("./students");
 const councilMembers = require("./councilMembers");
 const workers = require("./workers");
 const wardens = require("./wardens");
-const hallSupervisers = require("./hallSuperviser");
+const hallSupervisers = require("./hallSupervisor");
 
 // MongoDB models
 const Student = require("./models/Student");
 const Worker = require("./models/Worker");
 const CouncilMember = require("./models/CouncilMember");
-const HallSuperviser = require("./models/HallSuperviser");
+const HallSuperviser = require("./models/HallSupervisor");
 
 // Routes
 const complaintRoutes = require("./routes/complaintRoutes");
