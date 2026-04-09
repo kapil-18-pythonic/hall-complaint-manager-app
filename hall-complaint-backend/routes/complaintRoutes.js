@@ -604,4 +604,44 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+router.patch("/:id/forward-to-warden", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { forwardedByCouncil, forwardedByPor } = req.body;
+
+    const complaint = await Complaint.findById(id);
+    if (!complaint) {
+      return res.status(404).json({
+        success: false,
+        message: "Complaint not found",
+      });
+    }
+
+    if (complaint.forwardedToWarden) {
+      return res.json({
+        success: false,
+        message: "Complaint already forwarded to warden",
+      });
+    }
+
+    complaint.forwardedToWarden = true;
+    complaint.forwardedToWardenAt = new Date();
+    complaint.forwardedByCouncil = forwardedByCouncil || "Council Member";
+    complaint.forwardedByPor = forwardedByPor || null;
+
+    await complaint.save();
+
+    return res.json({
+      success: true,
+      message: "Complaint forwarded to warden successfully",
+      complaint,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to forward complaint",
+    });
+  }
+});
+
 module.exports = router;
