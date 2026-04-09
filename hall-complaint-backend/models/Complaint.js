@@ -20,7 +20,6 @@ const complaintSchema = new mongoose.Schema(
       enum: ["civil", "electricity", "mess", "sports", "gym", "other"],
     },
 
-    // NEW
     issueType: {
       type: String,
       enum: ["bullied", "medical", "other"],
@@ -93,6 +92,17 @@ const complaintSchema = new mongoose.Schema(
       trim: true,
     },
 
+    assignedBySupervisor: {
+      type: Boolean,
+      default: false,
+    },
+
+    assignedBySupervisorName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     assignedAt: {
       type: Date,
       default: null,
@@ -130,12 +140,76 @@ const complaintSchema = new mongoose.Schema(
       default: null,
     },
 
+    escalatedBy: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    escalatedByRole: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    escalationReason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     highlightedByWarden: {
       type: Boolean,
       default: false,
     },
 
     highlightedAt: {
+      type: Date,
+      default: null,
+    },
+
+    queryText: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    latestQuery: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    queryRaisedBy: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    queryRaisedAt: {
+      type: Date,
+      default: null,
+    },
+
+    queryReply: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    studentQueryReply: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    queryRepliedBy: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    queryRepliedAt: {
       type: Date,
       default: null,
     },

@@ -9,22 +9,22 @@ require("dotenv").config();
 
 const connectDB = require("./config/db");
 
-// Old fallback files (keep for now)
+// Old fallback files
 const students = require("./students");
 const councilMembers = require("./councilMembers");
 const workers = require("./workers");
 const wardens = require("./wardens");
+const hallSupervisers = require("./hallSuperviser");
 
-// New MongoDB models
+// MongoDB models
 const Student = require("./models/Student");
 const Worker = require("./models/Worker");
 const CouncilMember = require("./models/CouncilMember");
+const HallSuperviser = require("./models/HallSuperviser");
 
-// Existing routes
+// Routes
 const complaintRoutes = require("./routes/complaintRoutes");
 const workerRoutes = require("./routes/workerRoutes");
-
-// New route for warden member management
 const memberManagementRoutes = require("./routes/memberManagementRoutes");
 
 const app = express();
@@ -46,9 +46,13 @@ function escapeRegex(value = "") {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// DB-first, old-file fallback
+function normalizeIdentifier(value = "") {
+  return value.trim().toLowerCase();
+}
+
+// DB-first, static fallback
 async function findUser(role, identifier) {
-  const cleanIdentifier = identifier?.trim().toLowerCase();
+  const cleanIdentifier = normalizeIdentifier(identifier);
 
   if (!cleanIdentifier) return null;
 
@@ -57,41 +61,63 @@ async function findUser(role, identifier) {
   switch (role) {
     case "student":
       dbUser = await Student.findOne({
-        roll: { $regex: `^${escapeRegex(cleanIdentifier)}$`, $options: "i" },
+        roll: {
+          $regex: `^${escapeRegex(cleanIdentifier)}$`,
+          $options: "i",
+        },
       }).lean();
 
       if (dbUser) return dbUser;
 
       return students.find(
-        (item) => item.roll?.trim().toLowerCase() === cleanIdentifier
+        (item) => normalizeIdentifier(item.roll) === cleanIdentifier
       );
 
     case "council":
       dbUser = await CouncilMember.findOne({
-        roll: { $regex: `^${escapeRegex(cleanIdentifier)}$`, $options: "i" },
+        roll: {
+          $regex: `^${escapeRegex(cleanIdentifier)}$`,
+          $options: "i",
+        },
       }).lean();
 
       if (dbUser) return dbUser;
 
       return councilMembers.find(
-        (item) => item.roll?.trim().toLowerCase() === cleanIdentifier
+        (item) => normalizeIdentifier(item.roll) === cleanIdentifier
       );
 
     case "worker":
       dbUser = await Worker.findOne({
-        email: { $regex: `^${escapeRegex(cleanIdentifier)}$`, $options: "i" },
+        email: {
+          $regex: `^${escapeRegex(cleanIdentifier)}$`,
+          $options: "i",
+        },
       }).lean();
 
       if (dbUser) return dbUser;
 
       return workers.find(
-        (item) => item.email?.trim().toLowerCase() === cleanIdentifier
+        (item) => normalizeIdentifier(item.email) === cleanIdentifier
       );
 
     case "warden":
-      // keeping warden static for now
       return wardens.find(
-        (item) => item.email?.trim().toLowerCase() === cleanIdentifier
+        (item) => normalizeIdentifier(item.email) === cleanIdentifier
+      );
+
+    case "hallSupervisor":
+      dbUser = await HallSuperviser.findOne({
+        email: {
+          $regex: `^${escapeRegex(cleanIdentifier)}$`,
+          $options: "i",
+        },
+      }).lean();
+
+      if (dbUser) return dbUser;
+
+      return hallSupervisers.find(
+        (item) => normalizeIdentifier(item.email) === cleanIdentifier
       );
 
     default:
@@ -128,6 +154,21 @@ app.post("/send-otp", async (req, res) => {
       });
     }
 
+    const allowedRoles = [
+      "student",
+      "council",
+      "worker",
+      "warden",
+      "hallSupervisor",
+    ];
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid role.",
+      });
+    }
+
     const user = await findUser(role, identifier);
 
     if (!user) {
@@ -145,7 +186,7 @@ app.post("/send-otp", async (req, res) => {
     }
 
     const otp = generateOtp();
-    const key = `${role}_${identifier.trim().toLowerCase()}`;
+    const key = `${role}_${normalizeIdentifier(identifier)}`;
 
     otpStore[key] = {
       otp,
@@ -163,16 +204,18 @@ app.post("/send-otp", async (req, res) => {
         to: user.email,
         subject: "Hall Complaint Manager Login OTP",
         html: `
-          <h2>Hall Complaint Manager</h2>
-          <p>Hello ${user.name || "User"},</p>
-          <p>Your OTP is:</p>
-          <h1>${otp}</h1>
-          <p>Valid for 5 minutes.</p>
+          <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <h2>Hall Complaint Manager</h2>
+            <p>Hello ${user.name || "User"},</p>
+            <p>Your OTP for login is:</p>
+            <h1 style="letter-spacing: 4px;">${otp}</h1>
+            <p>This OTP is valid for 5 minutes.</p>
+          </div>
         `,
       });
 
       if (error) {
-        emailError = error.message;
+        emailError = error.message || "Failed to send email.";
       } else {
         emailSent = true;
       }
@@ -188,7 +231,7 @@ app.post("/send-otp", async (req, res) => {
         : "OTP generated but email failed.",
       role,
       user,
-      otp, // keep for testing for now
+      otp, // keep only while testing
       emailSent,
       emailError,
     });
@@ -202,7 +245,7 @@ app.post("/send-otp", async (req, res) => {
   }
 });
 
-app.post("/verify-otp", (req, res) => {
+app.post("/verify-otp", async (req, res) => {
   try {
     const { role, identifier, otp } = req.body;
 
@@ -213,7 +256,7 @@ app.post("/verify-otp", (req, res) => {
       });
     }
 
-    const key = `${role}_${identifier.trim().toLowerCase()}`;
+    const key = `${role}_${normalizeIdentifier(identifier)}`;
     const record = otpStore[key];
 
     if (!record) {
@@ -231,14 +274,17 @@ app.post("/verify-otp", (req, res) => {
       });
     }
 
-    if (record.otp !== otp.trim()) {
+    if (record.otp !== String(otp).trim()) {
       return res.status(400).json({
         success: false,
         message: "Invalid OTP.",
       });
     }
 
-    const user = record.user;
+    // optional fresh re-check
+    const freshUser = await findUser(role, identifier);
+    const user = freshUser || record.user;
+
     delete otpStore[key];
 
     return res.status(200).json({
@@ -273,7 +319,7 @@ app.use((err, req, res, next) => {
   console.error("Server error:", err);
   res.status(500).json({
     success: false,
-    message: "Internal server error",
+    message: err.message || "Internal server error",
   });
 });
 

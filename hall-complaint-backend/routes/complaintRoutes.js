@@ -17,6 +17,8 @@ const workerTypeMap = {
   gym: ["gym"],
 };
 
+const supervisorAssignableCategories = ["civil", "electricity", "sports", "gym"];
+
 const normalize = (value = "") => value.trim().toLowerCase();
 
 // CREATE COMPLAINT
@@ -178,14 +180,14 @@ router.patch("/:id/council-assign", async (req, res) => {
     const allowedCouncilCategories = porAccessMap[normalize(councilPor)] || [];
     const allowedWorkerCategories = workerTypeMap[normalize(workerType)] || [];
 
-    if (!allowedCouncilCategories.includes(complaint.category)) {
+    if (!allowedCouncilCategories.includes(normalize(complaint.category))) {
       return res.status(403).json({
         success: false,
         message: "Council member cannot manage this complaint type.",
       });
     }
 
-    if (!allowedWorkerCategories.includes(complaint.category)) {
+    if (!allowedWorkerCategories.includes(normalize(complaint.category))) {
       return res.status(400).json({
         success: false,
         message: "Worker type does not match complaint category.",
@@ -202,7 +204,9 @@ router.patch("/:id/council-assign", async (req, res) => {
     complaint.assignedWorker = workerName;
     complaint.assignedWorkerId = workerId;
     complaint.assignedByCouncil = true;
-    complaint.assignedByCouncilName = councilName;
+    complaint.assignedByCouncilName = councilName || "Council Member";
+    complaint.assignedBySupervisor = false;
+    complaint.assignedBySupervisorName = "";
     complaint.assignedAt = new Date();
     complaint.workerStatus = "pending";
     complaint.status = "assigned";
@@ -212,6 +216,171 @@ router.patch("/:id/council-assign", async (req, res) => {
     return res.json({
       success: true,
       message: "Worker assigned successfully by council member.",
+      complaint,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// HALL SUPERVISOR ASSIGNS WORKER
+router.patch("/:id/supervisor-assign", async (req, res) => {
+  try {
+    const { workerName, workerId, workerType, supervisorName } = req.body;
+
+    const complaint = await Complaint.findById(req.params.id);
+
+    if (!complaint) {
+      return res.status(404).json({
+        success: false,
+        message: "Complaint not found",
+      });
+    }
+
+    const complaintCategory = normalize(complaint.category);
+    const allowedWorkerCategories = workerTypeMap[normalize(workerType)] || [];
+
+    if (!supervisorAssignableCategories.includes(complaintCategory)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Supervisor can assign workers only for civil, electricity, sports or gym complaints.",
+      });
+    }
+
+    if (!allowedWorkerCategories.includes(complaintCategory)) {
+      return res.status(400).json({
+        success: false,
+        message: "Worker type does not match complaint category.",
+      });
+    }
+
+    if (complaint.assignedWorker) {
+      return res.status(400).json({
+        success: false,
+        message: "Complaint is already assigned.",
+      });
+    }
+
+    if (complaint.status === "completed") {
+      return res.status(400).json({
+        success: false,
+        message: "Completed complaint cannot be assigned.",
+      });
+    }
+
+    if (complaint.escalated) {
+      return res.status(400).json({
+        success: false,
+        message: "Escalated complaint cannot be assigned from here.",
+      });
+    }
+
+    complaint.assignedWorker = workerName;
+    complaint.assignedWorkerId = workerId;
+    complaint.assignedBySupervisor = true;
+    complaint.assignedBySupervisorName = supervisorName || "Hall Supervisor";
+    complaint.assignedByCouncil = false;
+    complaint.assignedByCouncilName = "";
+    complaint.assignedAt = new Date();
+    complaint.workerStatus = "pending";
+    complaint.status = "assigned";
+
+    await complaint.save();
+
+    return res.json({
+      success: true,
+      message: "Worker assigned successfully by hall supervisor.",
+      complaint,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// HALL SUPERVISOR RAISES QUERY TO STUDENT
+router.patch("/:id/raise-query", async (req, res) => {
+  try {
+    const { queryText, raisedBy } = req.body;
+
+    if (!queryText || !queryText.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Query text is required.",
+      });
+    }
+
+    const complaint = await Complaint.findById(req.params.id);
+
+    if (!complaint) {
+      return res.status(404).json({
+        success: false,
+        message: "Complaint not found",
+      });
+    }
+
+    complaint.queryText = queryText.trim();
+    complaint.latestQuery = queryText.trim();
+    complaint.queryRaisedBy = raisedBy || "Hall Supervisor";
+    complaint.queryRaisedAt = new Date();
+
+    // clear previous reply if a fresh query is raised
+    complaint.queryReply = "";
+    complaint.studentQueryReply = "";
+    complaint.queryRepliedAt = null;
+
+    await complaint.save();
+
+    return res.json({
+      success: true,
+      message: "Query raised successfully.",
+      complaint,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// STUDENT REPLIES TO QUERY
+router.patch("/:id/reply-query", async (req, res) => {
+  try {
+    const { replyText, repliedBy } = req.body;
+
+    if (!replyText || !replyText.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Reply text is required.",
+      });
+    }
+
+    const complaint = await Complaint.findById(req.params.id);
+
+    if (!complaint) {
+      return res.status(404).json({
+        success: false,
+        message: "Complaint not found",
+      });
+    }
+
+    complaint.queryReply = replyText.trim();
+    complaint.studentQueryReply = replyText.trim();
+    complaint.queryRepliedBy = repliedBy || complaint.studentName || "Student";
+    complaint.queryRepliedAt = new Date();
+
+    await complaint.save();
+
+    return res.json({
+      success: true,
+      message: "Reply submitted successfully.",
       complaint,
     });
   } catch (error) {
@@ -245,7 +414,7 @@ router.patch("/:id/takeover", async (req, res) => {
 
     const allowedWorkerCategories = workerTypeMap[normalize(workerType)] || [];
 
-    if (!allowedWorkerCategories.includes(complaint.category)) {
+    if (!allowedWorkerCategories.includes(normalize(complaint.category))) {
       return res.status(403).json({
         success: false,
         message: "Worker cannot take this complaint type.",
@@ -256,6 +425,8 @@ router.patch("/:id/takeover", async (req, res) => {
     complaint.assignedWorkerId = workerId;
     complaint.assignedByCouncil = false;
     complaint.assignedByCouncilName = "";
+    complaint.assignedBySupervisor = false;
+    complaint.assignedBySupervisorName = "";
     complaint.assignedAt = new Date();
     complaint.workerStatus = "accepted";
     complaint.status = "assigned";
@@ -337,9 +508,11 @@ router.patch("/:id/student-confirm", async (req, res) => {
   }
 });
 
-// ESCALATE COMPLAINT
+// ESCALATE COMPLAINT TO WARDEN
 router.patch("/:id/escalate", async (req, res) => {
   try {
+    const { escalatedBy, escalatedByRole, reason } = req.body || {};
+
     const complaint = await Complaint.findById(req.params.id);
 
     if (!complaint) {
@@ -351,6 +524,9 @@ router.patch("/:id/escalate", async (req, res) => {
 
     complaint.escalated = true;
     complaint.escalatedAt = new Date();
+    complaint.escalatedBy = escalatedBy || "";
+    complaint.escalatedByRole = escalatedByRole || "";
+    complaint.escalationReason = reason || "";
 
     await complaint.save();
 
