@@ -1,26 +1,26 @@
 const express = require("express");
 const cors = require("cors");
 const { Resend } = require("resend");
-
 const dns = require("dns");
+
 dns.setDefaultResultOrder("ipv4first");
 
 require("dotenv").config();
 
 const connectDB = require("./config/db");
 
-// Old fallback files
+// Static fallback (optional)
 const students = require("./students");
 const councilMembers = require("./councilMembers");
 const workers = require("./workers");
 const wardens = require("./wardens");
 const hallSupervisers = require("./hallSupervisor");
 
-// MongoDB models
+// MongoDB Models
 const Student = require("./models/Student");
 const Worker = require("./models/Worker");
 const CouncilMember = require("./models/CouncilMember");
-const HallSuperviser = require("./models/HallSupervisor");
+const HallSupervisor = require("./models/HallSupervisor");
 
 // Routes
 const complaintRoutes = require("./routes/complaintRoutes");
@@ -38,6 +38,10 @@ connectDB();
 app.use(cors());
 app.use(express.json());
 
+/* =====================================================
+   HELPERS
+===================================================== */
+
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
@@ -50,10 +54,12 @@ function normalizeIdentifier(value = "") {
   return value.trim().toLowerCase();
 }
 
-// DB-first, static fallback
+/* =====================================================
+   FIND USER (DB FIRST → STATIC FALLBACK)
+===================================================== */
+
 async function findUser(role, identifier) {
   const cleanIdentifier = normalizeIdentifier(identifier);
-
   if (!cleanIdentifier) return null;
 
   let dbUser = null;
@@ -66,7 +72,6 @@ async function findUser(role, identifier) {
           $options: "i",
         },
       }).lean();
-
       if (dbUser) return dbUser;
 
       return students.find(
@@ -80,7 +85,6 @@ async function findUser(role, identifier) {
           $options: "i",
         },
       }).lean();
-
       if (dbUser) return dbUser;
 
       return councilMembers.find(
@@ -94,7 +98,6 @@ async function findUser(role, identifier) {
           $options: "i",
         },
       }).lean();
-
       if (dbUser) return dbUser;
 
       return workers.find(
@@ -107,7 +110,7 @@ async function findUser(role, identifier) {
       );
 
     case "hallSupervisor":
-      dbUser = await HallSuperviser.findOne({
+      dbUser = await HallSupervisor.findOne({
         email: {
           $regex: `^${escapeRegex(cleanIdentifier)}$`,
           $options: "i",
@@ -125,15 +128,12 @@ async function findUser(role, identifier) {
   }
 }
 
+/* =====================================================
+   BASIC ROUTES
+===================================================== */
+
 app.get("/", (req, res) => {
   res.send("Backend is working ✅");
-});
-
-app.get("/test", (req, res) => {
-  res.json({
-    success: true,
-    message: "Server is running fine",
-  });
 });
 
 app.get("/health", (req, res) => {
@@ -142,6 +142,10 @@ app.get("/health", (req, res) => {
     message: "Server healthy",
   });
 });
+
+/* =====================================================
+   SEND OTP
+===================================================== */
 
 app.post("/send-otp", async (req, res) => {
   try {
@@ -204,21 +208,18 @@ app.post("/send-otp", async (req, res) => {
         to: user.email,
         subject: "Hall Complaint Manager Login OTP",
         html: `
-          <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+          <div style="font-family: Arial;">
             <h2>Hall Complaint Manager</h2>
             <p>Hello ${user.name || "User"},</p>
-            <p>Your OTP for login is:</p>
-            <h1 style="letter-spacing: 4px;">${otp}</h1>
+            <p>Your OTP is:</p>
+            <h1>${otp}</h1>
             <p>This OTP is valid for 5 minutes.</p>
           </div>
         `,
       });
 
-      if (error) {
-        emailError = error.message || "Failed to send email.";
-      } else {
-        emailSent = true;
-      }
+      if (error) emailError = error.message;
+      else emailSent = true;
     } catch (err) {
       emailError = err.message;
       console.error("Resend error:", err);
@@ -231,7 +232,7 @@ app.post("/send-otp", async (req, res) => {
         : "OTP generated but email failed.",
       role,
       user,
-      otp, // keep only while testing
+      otp, // remove in production
       emailSent,
       emailError,
     });
@@ -245,6 +246,10 @@ app.post("/send-otp", async (req, res) => {
   }
 });
 
+/* =====================================================
+   VERIFY OTP
+===================================================== */
+
 app.post("/verify-otp", async (req, res) => {
   try {
     const { role, identifier, otp } = req.body;
@@ -252,19 +257,18 @@ app.post("/verify-otp", async (req, res) => {
     if (!role || !identifier || !otp) {
       return res.status(400).json({
         success: false,
-        message: "Role, identifier and OTP are required.",
+        message: "Role, identifier and OTP required.",
       });
     }
 
     const key = `${role}_${normalizeIdentifier(identifier)}`;
     const record = otpStore[key];
 
-    if (!record) {
+    if (!record)
       return res.status(404).json({
         success: false,
-        message: "No OTP found. Please request a new OTP.",
+        message: "No OTP found. Request new OTP.",
       });
-    }
 
     if (Date.now() > record.expiresAt) {
       delete otpStore[key];
@@ -281,7 +285,6 @@ app.post("/verify-otp", async (req, res) => {
       });
     }
 
-    // optional fresh re-check
     const freshUser = await findUser(role, identifier);
     const user = freshUser || record.user;
 
@@ -303,10 +306,17 @@ app.post("/verify-otp", async (req, res) => {
   }
 });
 
-// Routes
+/* =====================================================
+   API ROUTES
+===================================================== */
+
 app.use("/api/complaints", complaintRoutes);
 app.use("/api/workers", workerRoutes);
 app.use("/api/members", memberManagementRoutes);
+
+/* =====================================================
+   FALLBACK HANDLERS
+===================================================== */
 
 app.use((req, res) => {
   res.status(404).json({

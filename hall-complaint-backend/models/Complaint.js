@@ -2,17 +2,8 @@ const mongoose = require("mongoose");
 
 const complaintSchema = new mongoose.Schema(
   {
-    title: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    description: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    title: { type: String, required: true, trim: true },
+    description: { type: String, required: true, trim: true },
 
     category: {
       type: String,
@@ -27,35 +18,11 @@ const complaintSchema = new mongoose.Schema(
       trim: true,
     },
 
-    hall: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    studentName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    rollNumber: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    roomNo: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    mobileNo: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+    hall: { type: String, required: true, trim: true },
+    studentName: { type: String, required: true, trim: true },
+    rollNumber: { type: String, required: true, trim: true },
+    roomNo: { type: String, default: "", trim: true },
+    mobileNo: { type: String, default: "", trim: true },
 
     priority: {
       type: String,
@@ -69,44 +36,13 @@ const complaintSchema = new mongoose.Schema(
       default: "pending",
     },
 
-    assignedWorker: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    assignedWorkerId: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    assignedByCouncil: {
-      type: Boolean,
-      default: false,
-    },
-
-    assignedByCouncilName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    assignedBySupervisor: {
-      type: Boolean,
-      default: false,
-    },
-
-    assignedBySupervisorName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    assignedAt: {
-      type: Date,
-      default: null,
-    },
+    assignedWorker: { type: String, default: "", trim: true },
+    assignedWorkerId: { type: String, default: "", trim: true },
+    assignedByCouncil: { type: Boolean, default: false },
+    assignedByCouncilName: { type: String, default: "", trim: true },
+    assignedBySupervisor: { type: Boolean, default: false },
+    assignedBySupervisorName: { type: String, default: "", trim: true },
+    assignedAt: { type: Date, default: null },
 
     workerStatus: {
       type: String,
@@ -120,104 +56,29 @@ const complaintSchema = new mongoose.Schema(
       default: "pending",
     },
 
-    workerCompletedAt: {
-      type: Date,
-      default: null,
-    },
+    workerCompletedAt: { type: Date, default: null },
+    completedAt: { type: Date, default: null },
 
-    completedAt: {
-      type: Date,
-      default: null,
-    },
+    // 🔴 Highlight System
+    studentHighlighted: { type: Boolean, default: false },
+    studentHighlightedAt: { type: Date, default: null },
 
-    escalated: {
-      type: Boolean,
-      default: false,
-    },
+    councilHighlighted: { type: Boolean, default: false },
+    councilHighlightedAt: { type: Date, default: null },
 
-    escalatedAt: {
-      type: Date,
-      default: null,
-    },
+    forwardedToWarden: { type: Boolean, default: false },
+    forwardedToWardenAt: { type: Date, default: null },
+    forwardedByCouncil: { type: String, default: "", trim: true },
+    forwardedByPor: { type: String, default: "", trim: true },
 
-    escalatedBy: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+    // 🟥 WARDEN AUTHORITY SYSTEM
+    wardenRemark: { type: String, default: "" },
+    wardenRemarkAt: { type: Date, default: null },
 
-    escalatedByRole: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+    wardenEscalated: { type: Boolean, default: false },
+    wardenEscalatedAt: { type: Date, default: null },
 
-    escalationReason: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    highlightedByWarden: {
-      type: Boolean,
-      default: false,
-    },
-
-    highlightedAt: {
-      type: Date,
-      default: null,
-    },
-
-    queryText: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    latestQuery: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    queryRaisedBy: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    queryRaisedAt: {
-      type: Date,
-      default: null,
-    },
-
-    queryReply: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    studentQueryReply: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    queryRepliedBy: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    queryRepliedAt: {
-      type: Date,
-      default: null,
-    },
-
-    photo: {
-      type: String,
-      default: "",
-    },
+    photo: { type: String, default: "" },
   },
   { timestamps: true }
 );

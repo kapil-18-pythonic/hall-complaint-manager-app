@@ -9,7 +9,7 @@ const councilMemberSchema = new mongoose.Schema(
     por: {
       type: String,
       required: true,
-      enum: ["gsec_maintenance", "gsec_mess", "gsec_sports"],
+      enum: ["gsec_maintenance", "gsec_mess", "gsec_sports","gsec_welfare"],
     },
   },
   { timestamps: true }

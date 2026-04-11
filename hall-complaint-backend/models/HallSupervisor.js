@@ -25,7 +25,7 @@ const hallSupervisorSchema = new mongoose.Schema(
     por: {
       type: String,
       required: true,
-      enum: ["hall_supervisor"],
+      enum: ["hall_supervisor", "manager"],
       default: "hall_supervisor",
     },
   },

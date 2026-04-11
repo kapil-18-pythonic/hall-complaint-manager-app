@@ -3,10 +3,15 @@ const Complaint = require("../models/Complaint");
 
 const router = express.Router();
 
+/* =====================================================
+   CONFIG
+===================================================== */
+
 const porAccessMap = {
-  "gsec maintenance": ["other", "civil", "electricity"],
+  "gsec maintenance": ["civil", "electricity"],
   "gsec mess": ["mess"],
   "gsec sports": ["sports", "gym"],
+  "gsec welfare": ["other"], // handled specially
 };
 
 const workerTypeMap = {
@@ -17,446 +22,228 @@ const workerTypeMap = {
   gym: ["gym"],
 };
 
-const supervisorAssignableCategories = ["civil", "electricity", "sports", "gym"];
+const supervisorAssignableCategories = [
+  "civil",
+  "electricity",
+  "sports",
+  "gym",
+];
 
 const normalize = (value = "") => value.trim().toLowerCase();
 
-// CREATE COMPLAINT
+/* =====================================================
+   CREATE COMPLAINT
+===================================================== */
 router.post("/", async (req, res) => {
   try {
     const complaint = await Complaint.create(req.body);
-
-    return res.status(201).json({
-      success: true,
-      complaint,
-    });
+    return res.status(201).json({ success: true, complaint });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// GET ALL COMPLAINTS
+/* =====================================================
+   GET ALL COMPLAINTS
+===================================================== */
 router.get("/", async (req, res) => {
   try {
     const complaints = await Complaint.find().sort({ createdAt: -1 });
-
-    return res.json({
-      success: true,
-      complaints,
-    });
+    return res.json({ success: true, complaints });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// COUNCIL VIEW BY POR + HALL
+/* =====================================================
+   GET SINGLE COMPLAINT
+===================================================== */
+router.get("/:id", async (req, res) => {
+  try {
+    const complaint = await Complaint.findById(req.params.id);
+    if (!complaint)
+      return res.status(404).json({ success: false, message: "Not found" });
+
+    return res.json({ success: true, complaint });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/* =====================================================
+   COUNCIL VIEW (WITH WELFARE SUPPORT)
+===================================================== */
 router.get("/council/view", async (req, res) => {
   try {
     const { hall, por } = req.query;
+    const normalizedPor = normalize(por);
 
-    const allowedCategories = porAccessMap[normalize(por)] || [];
+    let query = {};
+    if (hall) query.hall = hall;
 
-    const query = {
-      category: { $in: allowedCategories },
-    };
-
-    if (hall) {
-      query.hall = hall;
+    // GSEC WELFARE
+    if (normalizedPor === "gsec welfare") {
+      query.category = "other";
+      query.issueType = { $in: ["medical", "bullied"] };
+    } else {
+      const allowedCategories = porAccessMap[normalizedPor] || [];
+      query.category = { $in: allowedCategories };
     }
 
-    const complaints = await Complaint.find(query).sort({ createdAt: -1 });
-
-    const sortedComplaints = complaints.sort((a, b) => {
-      if (a.category === "other" && b.category !== "other") return -1;
-      if (a.category !== "other" && b.category === "other") return 1;
-      return new Date(b.createdAt) - new Date(a.createdAt);
+    const complaints = await Complaint.find(query).sort({
+      createdAt: -1,
     });
 
-    return res.json({
-      success: true,
-      complaints: sortedComplaints,
-    });
+    return res.json({ success: true, complaints });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// WORKER VIEW BY TYPE + HALL
+/* =====================================================
+   WORKER VIEW (ONLY ASSIGNED)
+===================================================== */
 router.get("/worker/view", async (req, res) => {
   try {
-    const { hall, type } = req.query;
+    const { workerId } = req.query;
 
-    const allowedCategories = workerTypeMap[normalize(type)] || [];
+    if (!workerId)
+      return res
+        .status(400)
+        .json({ success: false, message: "Worker ID required" });
 
-    const query = {
-      category: { $in: allowedCategories },
-    };
+    const complaints = await Complaint.find({
+      assignedWorkerId: workerId,
+    }).sort({ createdAt: -1 });
 
-    if (hall) {
-      query.hall = hall;
-    }
-
-    const complaints = await Complaint.find(query).sort({ createdAt: -1 });
-
-    return res.json({
-      success: true,
-      complaints,
-    });
+    return res.json({ success: true, complaints });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// GET COMPLAINTS BY HALL
+/* =====================================================
+   GET BY HALL
+===================================================== */
 router.get("/hall/:hall", async (req, res) => {
   try {
     const complaints = await Complaint.find({
       hall: req.params.hall,
     }).sort({ createdAt: -1 });
 
-    return res.json({
-      success: true,
-      complaints,
-    });
+    return res.json({ success: true, complaints });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// GET SINGLE COMPLAINT BY ID
-router.get("/:id", async (req, res) => {
-  try {
-    const complaint = await Complaint.findById(req.params.id);
-
-    if (!complaint) {
-      return res.status(404).json({
-        success: false,
-        message: "Complaint not found",
-      });
-    }
-
-    return res.json({
-      success: true,
-      complaint,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-});
-
-// COUNCIL ASSIGNS WORKER
+/* =====================================================
+   COUNCIL ASSIGN WORKER
+===================================================== */
 router.patch("/:id/council-assign", async (req, res) => {
   try {
     const { workerName, workerId, workerType, councilName, councilPor } =
       req.body;
 
     const complaint = await Complaint.findById(req.params.id);
+    if (!complaint)
+      return res.status(404).json({ success: false, message: "Not found" });
 
-    if (!complaint) {
-      return res.status(404).json({
-        success: false,
-        message: "Complaint not found",
-      });
-    }
+    const allowedCouncilCategories =
+      porAccessMap[normalize(councilPor)] || [];
+    const allowedWorkerCategories =
+      workerTypeMap[normalize(workerType)] || [];
 
-    const allowedCouncilCategories = porAccessMap[normalize(councilPor)] || [];
-    const allowedWorkerCategories = workerTypeMap[normalize(workerType)] || [];
-
-    if (!allowedCouncilCategories.includes(normalize(complaint.category))) {
+    if (!allowedCouncilCategories.includes(normalize(complaint.category)))
       return res.status(403).json({
         success: false,
-        message: "Council member cannot manage this complaint type.",
+        message: "Council cannot manage this type",
       });
-    }
 
-    if (!allowedWorkerCategories.includes(normalize(complaint.category))) {
+    if (!allowedWorkerCategories.includes(normalize(complaint.category)))
       return res.status(400).json({
         success: false,
-        message: "Worker type does not match complaint category.",
+        message: "Worker type mismatch",
       });
-    }
 
-    if (complaint.assignedWorker) {
+    if (complaint.assignedWorker)
       return res.status(400).json({
         success: false,
-        message: "Complaint is already assigned.",
+        message: "Already assigned",
       });
-    }
 
     complaint.assignedWorker = workerName;
     complaint.assignedWorkerId = workerId;
     complaint.assignedByCouncil = true;
-    complaint.assignedByCouncilName = councilName || "Council Member";
-    complaint.assignedBySupervisor = false;
-    complaint.assignedBySupervisorName = "";
+    complaint.assignedByCouncilName = councilName || "Council";
     complaint.assignedAt = new Date();
-    complaint.workerStatus = "pending";
     complaint.status = "assigned";
 
     await complaint.save();
 
-    return res.json({
-      success: true,
-      message: "Worker assigned successfully by council member.",
-      complaint,
-    });
+    return res.json({ success: true, complaint });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// HALL SUPERVISOR ASSIGNS WORKER
+/* =====================================================
+   SUPERVISOR ASSIGN WORKER
+===================================================== */
 router.patch("/:id/supervisor-assign", async (req, res) => {
   try {
     const { workerName, workerId, workerType, supervisorName } = req.body;
 
     const complaint = await Complaint.findById(req.params.id);
+    if (!complaint)
+      return res.status(404).json({ success: false, message: "Not found" });
 
-    if (!complaint) {
-      return res.status(404).json({
-        success: false,
-        message: "Complaint not found",
-      });
-    }
+    const category = normalize(complaint.category);
+    const allowedWorkerCategories =
+      workerTypeMap[normalize(workerType)] || [];
 
-    const complaintCategory = normalize(complaint.category);
-    const allowedWorkerCategories = workerTypeMap[normalize(workerType)] || [];
-
-    if (!supervisorAssignableCategories.includes(complaintCategory)) {
+    if (!supervisorAssignableCategories.includes(category))
       return res.status(400).json({
         success: false,
-        message:
-          "Supervisor can assign workers only for civil, electricity, sports or gym complaints.",
+        message: "Supervisor cannot assign this type",
       });
-    }
 
-    if (!allowedWorkerCategories.includes(complaintCategory)) {
+    if (!allowedWorkerCategories.includes(category))
       return res.status(400).json({
         success: false,
-        message: "Worker type does not match complaint category.",
+        message: "Worker type mismatch",
       });
-    }
 
-    if (complaint.assignedWorker) {
+    if (complaint.assignedWorker)
       return res.status(400).json({
         success: false,
-        message: "Complaint is already assigned.",
+        message: "Already assigned",
       });
-    }
-
-    if (complaint.status === "completed") {
-      return res.status(400).json({
-        success: false,
-        message: "Completed complaint cannot be assigned.",
-      });
-    }
-
-    if (complaint.escalated) {
-      return res.status(400).json({
-        success: false,
-        message: "Escalated complaint cannot be assigned from here.",
-      });
-    }
 
     complaint.assignedWorker = workerName;
     complaint.assignedWorkerId = workerId;
     complaint.assignedBySupervisor = true;
-    complaint.assignedBySupervisorName = supervisorName || "Hall Supervisor";
-    complaint.assignedByCouncil = false;
-    complaint.assignedByCouncilName = "";
+    complaint.assignedBySupervisorName =
+      supervisorName || "Supervisor";
     complaint.assignedAt = new Date();
-    complaint.workerStatus = "pending";
     complaint.status = "assigned";
 
     await complaint.save();
 
-    return res.json({
-      success: true,
-      message: "Worker assigned successfully by hall supervisor.",
-      complaint,
-    });
+    return res.json({ success: true, complaint });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// HALL SUPERVISOR RAISES QUERY TO STUDENT
-router.patch("/:id/raise-query", async (req, res) => {
-  try {
-    const { queryText, raisedBy } = req.body;
-
-    if (!queryText || !queryText.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Query text is required.",
-      });
-    }
-
-    const complaint = await Complaint.findById(req.params.id);
-
-    if (!complaint) {
-      return res.status(404).json({
-        success: false,
-        message: "Complaint not found",
-      });
-    }
-
-    complaint.queryText = queryText.trim();
-    complaint.latestQuery = queryText.trim();
-    complaint.queryRaisedBy = raisedBy || "Hall Supervisor";
-    complaint.queryRaisedAt = new Date();
-
-    // clear previous reply if a fresh query is raised
-    complaint.queryReply = "";
-    complaint.studentQueryReply = "";
-    complaint.queryRepliedAt = null;
-
-    await complaint.save();
-
-    return res.json({
-      success: true,
-      message: "Query raised successfully.",
-      complaint,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-});
-
-// STUDENT REPLIES TO QUERY
-router.patch("/:id/reply-query", async (req, res) => {
-  try {
-    const { replyText, repliedBy } = req.body;
-
-    if (!replyText || !replyText.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Reply text is required.",
-      });
-    }
-
-    const complaint = await Complaint.findById(req.params.id);
-
-    if (!complaint) {
-      return res.status(404).json({
-        success: false,
-        message: "Complaint not found",
-      });
-    }
-
-    complaint.queryReply = replyText.trim();
-    complaint.studentQueryReply = replyText.trim();
-    complaint.queryRepliedBy = repliedBy || complaint.studentName || "Student";
-    complaint.queryRepliedAt = new Date();
-
-    await complaint.save();
-
-    return res.json({
-      success: true,
-      message: "Reply submitted successfully.",
-      complaint,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-});
-
-// WORKER TAKES OVER COMPLAINT
-router.patch("/:id/takeover", async (req, res) => {
-  try {
-    const { workerName, workerId, workerType } = req.body;
-
-    const complaint = await Complaint.findById(req.params.id);
-
-    if (!complaint) {
-      return res.status(404).json({
-        success: false,
-        message: "Complaint not found",
-      });
-    }
-
-    if (complaint.assignedWorker) {
-      return res.status(400).json({
-        success: false,
-        message: "Complaint already assigned.",
-      });
-    }
-
-    const allowedWorkerCategories = workerTypeMap[normalize(workerType)] || [];
-
-    if (!allowedWorkerCategories.includes(normalize(complaint.category))) {
-      return res.status(403).json({
-        success: false,
-        message: "Worker cannot take this complaint type.",
-      });
-    }
-
-    complaint.assignedWorker = workerName;
-    complaint.assignedWorkerId = workerId;
-    complaint.assignedByCouncil = false;
-    complaint.assignedByCouncilName = "";
-    complaint.assignedBySupervisor = false;
-    complaint.assignedBySupervisorName = "";
-    complaint.assignedAt = new Date();
-    complaint.workerStatus = "accepted";
-    complaint.status = "assigned";
-
-    await complaint.save();
-
-    return res.json({
-      success: true,
-      message: "Complaint taken over successfully.",
-      complaint,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-});
-
-// WORKER MARKS COMPLETED
+/* =====================================================
+   WORKER COMPLETE
+===================================================== */
 router.patch("/:id/worker-complete", async (req, res) => {
   try {
     const complaint = await Complaint.findById(req.params.id);
-
-    if (!complaint) {
-      return res.status(404).json({
-        success: false,
-        message: "Complaint not found",
-      });
-    }
+    if (!complaint)
+      return res.status(404).json({ success: false, message: "Not found" });
 
     complaint.workerStatus = "completed";
     complaint.workerCompletedAt = new Date();
@@ -464,30 +251,20 @@ router.patch("/:id/worker-complete", async (req, res) => {
 
     await complaint.save();
 
-    return res.json({
-      success: true,
-      message: "Worker marked complaint as completed.",
-      complaint,
-    });
+    return res.json({ success: true, complaint });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// STUDENT CONFIRMS COMPLETION
+/* =====================================================
+   STUDENT CONFIRM
+===================================================== */
 router.patch("/:id/student-confirm", async (req, res) => {
   try {
     const complaint = await Complaint.findById(req.params.id);
-
-    if (!complaint) {
-      return res.status(404).json({
-        success: false,
-        message: "Complaint not found",
-      });
-    }
+    if (!complaint)
+      return res.status(404).json({ success: false, message: "Not found" });
 
     complaint.studentStatus = "completed";
     complaint.completedAt = new Date();
@@ -495,153 +272,233 @@ router.patch("/:id/student-confirm", async (req, res) => {
 
     await complaint.save();
 
-    return res.json({
-      success: true,
-      message: "Complaint confirmed completed by student.",
-      complaint,
-    });
+    return res.json({ success: true, complaint });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// ESCALATE COMPLAINT TO WARDEN
-router.patch("/:id/escalate", async (req, res) => {
+/* =====================================================
+   STUDENT HIGHLIGHT
+===================================================== */
+router.patch("/:id/student-highlight", async (req, res) => {
   try {
-    const { escalatedBy, escalatedByRole, reason } = req.body || {};
-
     const complaint = await Complaint.findById(req.params.id);
+    if (!complaint)
+      return res.status(404).json({ success: false, message: "Not found" });
 
-    if (!complaint) {
-      return res.status(404).json({
-        success: false,
-        message: "Complaint not found",
-      });
-    }
-
-    complaint.escalated = true;
-    complaint.escalatedAt = new Date();
-    complaint.escalatedBy = escalatedBy || "";
-    complaint.escalatedByRole = escalatedByRole || "";
-    complaint.escalationReason = reason || "";
+    complaint.studentHighlighted = true;
+    complaint.studentHighlightedAt = new Date();
 
     await complaint.save();
 
-    return res.json({
-      success: true,
-      message: "Complaint escalated successfully.",
-      complaint,
-    });
+    return res.json({ success: true, complaint });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// HIGHLIGHT BY WARDEN
-router.patch("/:id/highlight", async (req, res) => {
+/* =====================================================
+   COUNCIL HIGHLIGHT
+===================================================== */
+router.patch("/:id/council-highlight", async (req, res) => {
   try {
     const complaint = await Complaint.findById(req.params.id);
+    if (!complaint)
+      return res.status(404).json({ success: false, message: "Not found" });
 
-    if (!complaint) {
-      return res.status(404).json({
-        success: false,
-        message: "Complaint not found",
-      });
-    }
-
-    if (complaint.highlightedByWarden) {
-      return res.status(400).json({
-        success: false,
-        message: "Complaint already highlighted.",
-      });
-    }
-
-    complaint.highlightedByWarden = true;
-    complaint.highlightedAt = new Date();
+    complaint.councilHighlighted = true;
+    complaint.councilHighlightedAt = new Date();
 
     await complaint.save();
 
-    return res.json({
-      success: true,
-      message: "Complaint highlighted successfully.",
-      complaint,
-    });
+    return res.json({ success: true, complaint });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// DELETE COMPLAINT
-router.delete("/:id", async (req, res) => {
-  try {
-    const complaint = await Complaint.findByIdAndDelete(req.params.id);
-
-    if (!complaint) {
-      return res.status(404).json({
-        success: false,
-        message: "Complaint not found",
-      });
-    }
-
-    return res.json({
-      success: true,
-      message: "Complaint deleted successfully.",
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-});
-
+/* =====================================================
+   FORWARD TO WARDEN
+===================================================== */
 router.patch("/:id/forward-to-warden", async (req, res) => {
   try {
-    const { id } = req.params;
     const { forwardedByCouncil, forwardedByPor } = req.body;
 
-    const complaint = await Complaint.findById(id);
-    if (!complaint) {
-      return res.status(404).json({
-        success: false,
-        message: "Complaint not found",
-      });
-    }
+    const complaint = await Complaint.findById(req.params.id);
+    if (!complaint)
+      return res.status(404).json({ success: false, message: "Not found" });
 
-    if (complaint.forwardedToWarden) {
+    if (complaint.forwardedToWarden)
       return res.json({
         success: false,
-        message: "Complaint already forwarded to warden",
+        message: "Already forwarded",
       });
-    }
 
     complaint.forwardedToWarden = true;
     complaint.forwardedToWardenAt = new Date();
-    complaint.forwardedByCouncil = forwardedByCouncil || "Council Member";
-    complaint.forwardedByPor = forwardedByPor || null;
+    complaint.forwardedByCouncil =
+      forwardedByCouncil || "Council";
+    complaint.forwardedByPor = forwardedByPor || "";
+
+    await complaint.save();
+
+    return res.json({ success: true, complaint });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/* =====================================================
+   WARDEN STATS
+===================================================== */
+router.get("/warden-stats/:hall", async (req, res) => {
+  try {
+    const complaints = await Complaint.find({
+      hall: req.params.hall,
+      forwardedToWarden: true,
+    });
+
+    const total = complaints.length;
+    const completed = complaints.filter(
+      (c) => c.status === "completed"
+    ).length;
+    const conflict = complaints.filter(
+      (c) =>
+        c.workerStatus === "completed" &&
+        c.studentStatus === "pending"
+    ).length;
+    const pending = total - completed - conflict;
+
+    return res.json({
+      success: true,
+      stats: { total, pending, completed, conflict },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/* =====================================================
+   WARDEN LIST
+===================================================== */
+router.get("/warden-stats/:hall", async (req, res) => {
+  try {
+    const complaints = await Complaint.find({
+      hall: req.params.hall,
+      forwardedToWarden: true,
+    });
+
+    const total = complaints.length;
+    const completed = complaints.filter(
+      (c) => c.status === "completed"
+    ).length;
+
+    const conflict = complaints.filter(
+      (c) =>
+        c.workerStatus === "completed" &&
+        c.studentStatus === "pending"
+    ).length;
+
+    const highlighted = complaints.filter(
+      (c) =>
+        c.studentHighlighted ||
+        c.councilHighlighted ||
+        c.wardenEscalated
+    ).length;
+
+    const urgent = complaints.filter(
+      (c) => c.priority === "urgent"
+    ).length;
+
+    const pending = total - completed - conflict;
+
+    return res.json({
+      success: true,
+      stats: {
+        total,
+        pending,
+        completed,
+        conflict,
+        highlighted,
+        urgent,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+/* =====================================================
+   WARDEN REMARK
+===================================================== */
+router.patch("/:id/warden-remark", async (req, res) => {
+  try {
+    const { remark } = req.body;
+
+    if (!remark || !remark.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Remark is required",
+      });
+    }
+
+    const complaint = await Complaint.findById(req.params.id);
+
+    if (!complaint)
+      return res.status(404).json({
+        success: false,
+        message: "Complaint not found",
+      });
+
+    complaint.wardenRemark = remark.trim();
+    complaint.wardenRemarkAt = new Date();
 
     await complaint.save();
 
     return res.json({
       success: true,
-      message: "Complaint forwarded to warden successfully",
+      message: "Warden remark added",
       complaint,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: error.message || "Failed to forward complaint",
+      message: error.message,
     });
   }
 });
 
+/* =====================================================
+   WARDEN ESCALATE
+===================================================== */
+router.patch("/:id/warden-escalate", async (req, res) => {
+  try {
+    const complaint = await Complaint.findById(req.params.id);
+
+    if (!complaint)
+      return res.status(404).json({
+        success: false,
+        message: "Complaint not found",
+      });
+
+    complaint.wardenEscalated = true;
+    complaint.wardenEscalatedAt = new Date();
+
+    await complaint.save();
+
+    return res.json({
+      success: true,
+      message: "Complaint escalated by warden",
+      complaint,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
 module.exports = router;
