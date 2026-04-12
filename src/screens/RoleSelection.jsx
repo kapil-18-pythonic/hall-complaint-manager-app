@@ -33,6 +33,10 @@ export default function RoleSelection() {
         <Text style={styles.buttonText}>Hall Council Member</Text>
       </Pressable>
 
+      <Pressable style={styles.button} onPress={() => router.push("/login/supervisor")}>
+        <Text style={styles.buttonText}>Hall Superviser/Manager</Text>
+      </Pressable>
+
       <Pressable style={styles.button} onPress={() => router.push("/login/worker")}>
         <Text style={styles.buttonText}>Worker</Text>
       </Pressable>

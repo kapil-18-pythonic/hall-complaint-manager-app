@@ -1,16 +1,79 @@
 let complaints = [];
 
+/* =========================
+   BASIC CRUD
+========================= */
+
 export const addComplaint = (complaint) => {
-  complaints.push(complaint);
+  complaints.push({
+    ...complaint,
+
+    // assignment
+    assignedWorker: null,
+    assignedWorkerId: null,
+    assignedBy: null,
+    assignedByRole: null,
+    assignedAt: null,
+
+    // worker/student state
+    workerStatus: "pending",
+    studentStatus: "pending",
+
+    // highlights
+    studentHighlighted: false,
+    studentHighlightedAt: null,
+
+    councilHighlighted: false,
+    councilHighlightedAt: null,
+
+    // warden forwarding
+    forwardedToWarden: false,
+    forwardedToWardenAt: null,
+    forwardedBy: null,
+    forwardedByRole: null,
+  });
 };
 
-export const getComplaints = () => {
-  return complaints;
+export const getComplaints = () => complaints;
+
+export const getComplaintById = (id) =>
+  complaints.find((item) => item.id === id);
+
+/* =========================
+   ASSIGNMENT (Manager/Supervisor Only)
+========================= */
+
+export const assignWorkerToComplaint = (
+  id,
+  workerName,
+  workerId,
+  assignedBy,
+  assignedByRole
+) => {
+  const complaint = complaints.find((item) => item.id === id);
+  if (!complaint)
+    return { success: false, message: "Complaint not found." };
+
+  if (complaint.type === "mess")
+    return {
+      success: false,
+      message: "Mess complaints cannot be assigned to workers.",
+    };
+
+  complaint.assignedWorker = workerName;
+  complaint.assignedWorkerId = workerId;
+  complaint.assignedBy = assignedBy;
+  complaint.assignedByRole = assignedByRole;
+  complaint.assignedAt = new Date().toISOString();
+
+  complaint.workerStatus = "assigned";
+
+  return { success: true };
 };
 
-export const getComplaintById = (id) => {
-  return complaints.find((item) => item.id === id);
-};
+/* =========================
+   WORKER ACTIONS
+========================= */
 
 export const markComplaintCompleted = (id) => {
   const complaint = complaints.find((item) => item.id === id);
@@ -28,50 +91,41 @@ export const confirmComplaintResolvedByStudent = (id) => {
   complaint.completedAt = new Date().toISOString();
 };
 
-export const markComplaintEscalated = (id) => {
+/* =========================
+   HIGHLIGHT SYSTEM
+========================= */
+
+export const highlightByStudent = (id) => {
   const complaint = complaints.find((item) => item.id === id);
   if (!complaint) return;
 
-  complaint.escalated = true;
+  complaint.studentHighlighted = true;
+  complaint.studentHighlightedAt = new Date().toISOString();
 };
 
-export const assignWorkerToComplaint = (id, workerName, workerId) => {
+export const highlightByCouncil = (id) => {
   const complaint = complaints.find((item) => item.id === id);
+  if (!complaint) return;
 
-  if (!complaint) {
-    return { success: false, message: "Complaint not found." };
-  }
-
-  if (complaint.type === "mess") {
-    return {
-      success: false,
-      message: "Mess complaints cannot be taken by workers.",
-    };
-  }
-
-  if (complaint.assignedWorker) {
-    return {
-      success: false,
-      message: "This complaint has already been taken by another worker.",
-    };
-  }
-
-  complaint.assignedWorker = workerName;
-  complaint.assignedWorkerId = workerId;
-  complaint.assignedAt = new Date().toISOString();
-
-  complaint.workerStatus = "pending";
-
-  return { success: true };
+  complaint.councilHighlighted = true;
+  complaint.councilHighlightedAt = new Date().toISOString();
 };
+
+export const forwardToWarden = (id, forwardedBy, forwardedByRole) => {
+  const complaint = complaints.find((item) => item.id === id);
+  if (!complaint) return;
+
+  complaint.forwardedToWarden = true;
+  complaint.forwardedToWardenAt = new Date().toISOString();
+  complaint.forwardedBy = forwardedBy;
+  complaint.forwardedByRole = forwardedByRole;
+};
+
+/* =========================
+   OVERALL STATE
+========================= */
 
 export const getOverallComplaintState = (complaint) => {
-  if (complaint.type === "mess") {
-    return complaint.escalated ? "escalated" : "open";
-  }
-
-  if (complaint.escalated) return "escalated";
-
   if (
     complaint.workerStatus === "completed" &&
     complaint.studentStatus === "completed"
@@ -86,13 +140,22 @@ export const getOverallComplaintState = (complaint) => {
     return "conflict";
   }
 
+  if (complaint.workerStatus === "assigned") {
+    return "in-progress";
+  }
+
   return "pending";
 };
+
+/* =========================
+   SEARCH + FILTER
+========================= */
 
 export const searchAndFilterComplaints = ({
   complaintsList,
   searchText = "",
   state = "all",
+  priority = "all",
 }) => {
   const text = searchText.trim().toLowerCase();
 
@@ -110,23 +173,74 @@ export const searchAndFilterComplaints = ({
 
     const matchesState = state === "all" || overallState === state;
 
-    return matchesSearch && matchesState;
+    const matchesPriority =
+      priority === "all" || complaint.priority === priority;
+
+    return matchesSearch && matchesState && matchesPriority;
   });
 };
 
+/* =========================
+   PRIORITY SORTING
+========================= */
+
 export const priorityRank = (priority) => {
   if (priority === "urgent") return 1;
-  if (priority === "high") return 2;
-  if (priority === "medium") return 3;
+  if (priority === "medium") return 2;
+  if (priority === "low") return 3;
   return 4;
 };
 
-export const highlightComplaintByWarden = (id) => {
-  const complaint = complaints.find((item) => item.id === id);
-  if (!complaint) return { success: false, message: "Complaint not found." };
+export const sortByPriority = (list) => {
+  return [...list].sort((a, b) => {
+    const diff = priorityRank(a.priority) - priorityRank(b.priority);
+    if (diff !== 0) return diff;
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+};
 
-  complaint.highlightedByWarden = true;
-  complaint.highlightedAt = new Date().toISOString();
+/* =========================
+   HALL BASED FILTERING
+========================= */
 
-  return { success: true };
+export const getHallComplaints = (hall) => {
+  return complaints.filter((c) => c.hall === hall);
+};
+
+export const getAssignedComplaintsForWorker = (workerId) => {
+  return complaints.filter((c) => c.assignedWorkerId === workerId);
+};
+
+export const getForwardedComplaintsForWarden = (hall) => {
+  return complaints.filter(
+    (c) => c.hall === hall && c.forwardedToWarden
+  );
+};
+
+/* =========================
+   WARDEN STATS
+========================= */
+
+export const getWardenStats = (hall) => {
+  const hallComplaints = getForwardedComplaintsForWarden(hall);
+
+  let total = hallComplaints.length;
+  let pending = 0;
+  let completed = 0;
+  let conflict = 0;
+
+  hallComplaints.forEach((c) => {
+    const state = getOverallComplaintState(c);
+
+    if (state === "completed") completed++;
+    else if (state === "conflict") conflict++;
+    else pending++;
+  });
+
+  return {
+    total,
+    pending,
+    completed,
+    conflict,
+  };
 };

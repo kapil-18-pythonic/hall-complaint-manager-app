@@ -7,11 +7,13 @@ import {
   Pressable,
   Alert,
   RefreshControl,
+  TextInput,
 } from "react-native";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   getComplaintsByHall,
   studentConfirmComplaint,
+  studentReplyToQuery,
 } from "../../src/services/api";
 
 export default function MyComplaints() {
@@ -20,10 +22,15 @@ export default function MyComplaints() {
   const name = Array.isArray(params.name) ? params.name[0] : params.name;
   const roll = Array.isArray(params.roll) ? params.roll[0] : params.roll;
   const hall = Array.isArray(params.hall) ? params.hall[0] : params.hall;
+  const initialFilter = Array.isArray(params.filter)
+    ? params.filter[0]
+    : params.filter;
 
   const [complaints, setComplaints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [replyTexts, setReplyTexts] = useState({});
+  const [replyingId, setReplyingId] = useState(null);
 
   const loadComplaints = async (showLoader = true) => {
     try {
@@ -71,15 +78,30 @@ export default function MyComplaints() {
   };
 
   const activeComplaints = useMemo(() => {
-    return complaints.filter(
+    let data = complaints.filter(
       (complaint) => getOverallComplaintState(complaint) !== "completed"
     );
-  }, [complaints]);
+
+    if (initialFilter === "query") {
+      data = data.filter((complaint) => hasPendingQuery(complaint));
+    }
+
+    return data.sort((a, b) => {
+      const aHasQuery = hasPendingQuery(a) ? 1 : 0;
+      const bHasQuery = hasPendingQuery(b) ? 1 : 0;
+
+      if (aHasQuery !== bHasQuery) {
+        return bHasQuery - aHasQuery;
+      }
+
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    });
+  }, [complaints, initialFilter]);
 
   const historyComplaints = useMemo(() => {
-    return complaints.filter(
-      (complaint) => getOverallComplaintState(complaint) === "completed"
-    );
+    return complaints
+      .filter((complaint) => getOverallComplaintState(complaint) === "completed")
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   }, [complaints]);
 
   const handleConfirmResolved = async (id) => {
@@ -95,6 +117,41 @@ export default function MyComplaints() {
       loadComplaints(false);
     } catch (error) {
       Alert.alert("Error", error.message || "Failed to confirm complaint.");
+    }
+  };
+
+  const handleReplyToQuery = async (complaintId) => {
+    const replyText = replyTexts[complaintId]?.trim();
+
+    if (!replyText) {
+      Alert.alert("Missing Reply", "Please write your reply first.");
+      return;
+    }
+
+    try {
+      setReplyingId(complaintId);
+
+      const response = await studentReplyToQuery(complaintId, {
+        replyText,
+        repliedBy: name || "Student",
+      });
+
+      if (!response.success) {
+        Alert.alert("Error", response.message || "Failed to send reply.");
+        return;
+      }
+
+      setReplyTexts((prev) => ({
+        ...prev,
+        [complaintId]: "",
+      }));
+
+      Alert.alert("Reply Sent", "Your reply has been sent successfully.");
+      loadComplaints(false);
+    } catch (error) {
+      Alert.alert("Error", error.message || "Failed to send reply.");
+    } finally {
+      setReplyingId(null);
     }
   };
 
@@ -118,18 +175,36 @@ export default function MyComplaints() {
     >
       <Text style={styles.heading}>My Complaints</Text>
 
+      {initialFilter === "query" && (
+        <View style={styles.queryFilterBox}>
+          <Text style={styles.queryFilterText}>
+            Showing complaints that have supervisor queries.
+          </Text>
+        </View>
+      )}
+
       <Text style={styles.sectionTitle}>Active Complaints</Text>
 
       {loading ? (
         <Text style={styles.emptyText}>Loading complaints...</Text>
       ) : activeComplaints.length === 0 ? (
-        <Text style={styles.emptyText}>No active complaints.</Text>
+        <Text style={styles.emptyText}>
+          {initialFilter === "query"
+            ? "No complaint queries right now."
+            : "No active complaints."}
+        </Text>
       ) : (
         activeComplaints.map((complaint) => {
           const overallState = getOverallComplaintState(complaint);
+          const hasQuery = hasPendingQuery(complaint);
+          const previousReply =
+            complaint.studentQueryReply || complaint.queryReply || "";
 
           return (
-            <View key={complaint._id} style={styles.card}>
+            <View
+              key={complaint._id}
+              style={[styles.card, hasQuery && styles.queryCard]}
+            >
               <View style={styles.topRow}>
                 <Text style={styles.type}>
                   {formatType(complaint.category)}
@@ -187,8 +262,67 @@ export default function MyComplaints() {
                 </Text>
               )}
 
+              {hasQuery && (
+                <View style={styles.queryBox}>
+                  <Text style={styles.queryBoxTitle}>Supervisor Query</Text>
+                  <Text style={styles.queryBoxText}>
+                    {complaint.latestQuery ||
+                      complaint.queryText ||
+                      "Query available"}
+                  </Text>
+
+                  {complaint.queryRaisedAt && (
+                    <Text style={styles.queryMetaText}>
+                      Raised At:{" "}
+                      {new Date(complaint.queryRaisedAt).toLocaleString()}
+                    </Text>
+                  )}
+
+                  {previousReply ? (
+                    <View style={styles.replyPreviewBox}>
+                      <Text style={styles.replyPreviewTitle}>
+                        Your Previous Reply
+                      </Text>
+                      <Text style={styles.replyPreviewText}>
+                        {previousReply}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  <TextInput
+                    style={styles.replyInput}
+                    placeholder="Write your reply here..."
+                    placeholderTextColor="#FECACA"
+                    multiline
+                    value={replyTexts[complaint._id] || ""}
+                    onChangeText={(text) =>
+                      setReplyTexts((prev) => ({
+                        ...prev,
+                        [complaint._id]: text,
+                      }))
+                    }
+                  />
+
+                  <Pressable
+                    style={[
+                      styles.replyButton,
+                      replyingId === complaint._id && styles.replyButtonDisabled,
+                    ]}
+                    onPress={() => handleReplyToQuery(complaint._id)}
+                    disabled={replyingId === complaint._id}
+                  >
+                    <Text style={styles.replyButtonText}>
+                      {replyingId === complaint._id
+                        ? "Sending Reply..."
+                        : "Send Reply"}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+
               {complaint.category !== "mess" &&
                 complaint.category !== "other" &&
+                !hasQuery &&
                 (complaint.workerStatus !== "completed" ? (
                   <View style={styles.disabledBox}>
                     <Text style={styles.disabledText}>
@@ -309,6 +443,20 @@ export default function MyComplaints() {
   );
 }
 
+function hasPendingQuery(complaint) {
+  const hasQuery = !!(
+    complaint.latestQuery ||
+    complaint.queryText
+  );
+
+  const hasReply = !!(
+    complaint.studentQueryReply ||
+    complaint.queryReply
+  );
+
+  return hasQuery && !hasReply;
+}
+
 function getOverallComplaintState(complaint) {
   if (complaint.highlightedByWarden || complaint.escalated) return "escalated";
   if (
@@ -379,6 +527,19 @@ const styles = StyleSheet.create({
     color: "#A9B0D6",
     marginBottom: 18,
   },
+  queryFilterBox: {
+    backgroundColor: "#3A1020",
+    borderWidth: 1,
+    borderColor: "#B91C1C",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  queryFilterText: {
+    color: "#FECACA",
+    fontSize: 14,
+    fontWeight: "700",
+  },
   card: {
     borderWidth: 1,
     borderColor: "#3147C9",
@@ -386,6 +547,11 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 14,
     backgroundColor: "#141D6B",
+  },
+  queryCard: {
+    backgroundColor: "#3A1020",
+    borderColor: "#DC2626",
+    borderWidth: 1.5,
   },
   topRow: {
     flexDirection: "row",
@@ -506,12 +672,82 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingVertical: 12,
     borderRadius: 10,
-    backgroundColor: "#3e3ed0",
+    backgroundColor: "#3E3ED0",
   },
   disabledText: {
     color: "#D1D5DB",
     textAlign: "center",
     fontSize: 14,
     fontWeight: "600",
+  },
+  queryBox: {
+    marginTop: 12,
+    marginBottom: 12,
+    backgroundColor: "#4A1324",
+    borderWidth: 1,
+    borderColor: "#F87171",
+    borderRadius: 12,
+    padding: 12,
+  },
+  queryBoxTitle: {
+    color: "#FECACA",
+    fontSize: 15,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+  queryBoxText: {
+    color: "#FFE4E6",
+    fontSize: 14,
+    lineHeight: 21,
+    marginBottom: 8,
+  },
+  queryMetaText: {
+    color: "#FCA5A5",
+    fontSize: 12,
+    marginBottom: 10,
+  },
+  replyPreviewBox: {
+    backgroundColor: "#2E1065",
+    borderWidth: 1,
+    borderColor: "#8B5CF6",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+  },
+  replyPreviewTitle: {
+    color: "#DDD6FE",
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  replyPreviewText: {
+    color: "#F3E8FF",
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  replyInput: {
+    minHeight: 90,
+    backgroundColor: "#2B0B16",
+    borderWidth: 1,
+    borderColor: "#F87171",
+    borderRadius: 10,
+    padding: 12,
+    color: "#FFFFFF",
+    textAlignVertical: "top",
+    marginBottom: 10,
+  },
+  replyButton: {
+    backgroundColor: "#DC2626",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  replyButtonDisabled: {
+    opacity: 0.7,
+  },
+  replyButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

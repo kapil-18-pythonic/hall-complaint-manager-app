@@ -8,6 +8,7 @@ import {
   TextInput,
   RefreshControl,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { getCouncilComplaints } from "../../src/services/api";
@@ -41,11 +42,16 @@ export default function CouncilDashboard() {
 
       const response = await getCouncilComplaints(hall, councilPor);
 
-      if (response.success) {
-        const allComplaints = response.complaints || [];
+      if (response?.success) {
+        const allComplaints = Array.isArray(response.complaints)
+          ? response.complaints
+          : [];
 
         const porFilteredComplaints = allComplaints.filter((complaint) => {
-          const category = normalizeCategory(complaint.category);
+          const category = normalizeCategory(
+            complaint.category || complaint.type
+          );
+
           if (allowedCategories.length === 0) return true;
           return allowedCategories.includes(category);
         });
@@ -53,7 +59,7 @@ export default function CouncilDashboard() {
         setComplaints(porFilteredComplaints);
       } else {
         setComplaints([]);
-        Alert.alert("Error", response.message || "Failed to load complaints");
+        Alert.alert("Error", response?.message || "Failed to load complaints");
       }
     } catch (error) {
       setComplaints([]);
@@ -65,12 +71,18 @@ export default function CouncilDashboard() {
   };
 
   useEffect(() => {
-    loadComplaints();
+    if (hall) {
+      loadComplaints();
+    } else {
+      setLoading(false);
+    }
   }, [hall, councilPor]);
 
   useFocusEffect(
     useCallback(() => {
-      loadComplaints(false);
+      if (hall) {
+        loadComplaints(false);
+      }
     }, [hall, councilPor])
   );
 
@@ -80,11 +92,15 @@ export default function CouncilDashboard() {
   };
 
   const activeComplaints = useMemo(() => {
-    return complaints.filter((complaint) => getOverallComplaintState(complaint) !== "completed");
+    return complaints.filter(
+      (complaint) => getOverallComplaintState(complaint) !== "completed"
+    );
   }, [complaints]);
 
   const historyComplaints = useMemo(() => {
-    return complaints.filter((complaint) => getOverallComplaintState(complaint) === "completed");
+    return complaints.filter(
+      (complaint) => getOverallComplaintState(complaint) === "completed"
+    );
   }, [complaints]);
 
   const complaintsToShow =
@@ -102,8 +118,10 @@ export default function CouncilDashboard() {
         complaint.description?.toLowerCase().includes(text) ||
         complaint.hall?.toLowerCase().includes(text) ||
         complaint.category?.toLowerCase().includes(text) ||
+        complaint.type?.toLowerCase().includes(text) ||
         complaint.studentName?.toLowerCase().includes(text) ||
         complaint.rollNumber?.toLowerCase().includes(text) ||
+        complaint.roll?.toLowerCase().includes(text) ||
         complaint.assignedWorker?.toLowerCase().includes(text) ||
         complaint.assignedWorkerId?.toLowerCase().includes(text) ||
         complaint.workerId?.toLowerCase().includes(text);
@@ -120,11 +138,12 @@ export default function CouncilDashboard() {
 
   const sortedComplaints = useMemo(() => {
     return [...filteredComplaints].sort((a, b) => {
-      // 🚨 First priority: "other" category
-      if (a.category === "other" && b.category !== "other") return -1;
-      if (a.category !== "other" && b.category === "other") return 1;
+      const aCategory = normalizeCategory(a.category || a.type);
+      const bCategory = normalizeCategory(b.category || b.type);
 
-      // Then priority-based sorting
+      if (aCategory === "other" && bCategory !== "other") return -1;
+      if (aCategory !== "other" && bCategory === "other") return 1;
+
       return (
         priorityRank(a.priority || "medium") -
         priorityRank(b.priority || "medium")
@@ -158,7 +177,7 @@ export default function CouncilDashboard() {
     router.push({
       pathname: "/council/complaint-details",
       params: {
-        id: complaint._id,
+        id: complaint._id || complaint.id,
         por: councilPor,
         role: councilPor,
         hall,
@@ -181,9 +200,7 @@ export default function CouncilDashboard() {
       <View style={styles.profileCard}>
         <Text style={styles.welcome}>Welcome, {name || "Council Member"}</Text>
         <Text style={styles.info}>Hall: {hall || "Not Assigned"}</Text>
-        <Text style={styles.info}>
-          POR: {councilPor || "Not Assigned"}
-        </Text>
+        <Text style={styles.info}>POR: {councilPor || "Not Assigned"}</Text>
         <Text style={styles.info}>
           Complaint Types: {getComplaintTypeLabel(councilPor)}
         </Text>
@@ -264,9 +281,17 @@ export default function CouncilDashboard() {
       </Text>
 
       {loading ? (
-        <Text style={styles.emptyText}>Loading complaints...</Text>
+        <View style={styles.loaderWrap}>
+          <ActivityIndicator size="large" color="#4A63FF" />
+          <Text style={styles.emptyText}>Loading complaints...</Text>
+        </View>
       ) : sortedComplaints.length === 0 ? (
-        <Text style={styles.emptyText}>No complaints available.</Text>
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyText}>No complaints available.</Text>
+          <Text style={styles.emptySubText}>
+            Pull to refresh or check if complaints exist for this hall.
+          </Text>
+        </View>
       ) : (
         sortedComplaints.map((complaint) => {
           const overallState = getOverallComplaintState(complaint);
@@ -275,12 +300,14 @@ export default function CouncilDashboard() {
 
           return (
             <Pressable
-              key={complaint._id}
+              key={complaint._id || complaint.id}
               style={styles.card}
               onPress={() => openComplaintDetails(complaint)}
             >
               <View style={styles.topRow}>
-                <Text style={styles.type}>{formatType(complaint.category)}</Text>
+                <Text style={styles.type}>
+                  {formatType(complaint.category || complaint.type)}
+                </Text>
 
                 <View style={styles.rightBadges}>
                   <View
@@ -289,12 +316,12 @@ export default function CouncilDashboard() {
                       overallState === "escalated"
                         ? styles.escalated
                         : overallState === "conflict"
-                          ? styles.conflict
-                          : overallState === "completed"
-                            ? styles.completed
-                            : overallState === "open"
-                              ? styles.open
-                              : styles.pending,
+                        ? styles.conflict
+                        : overallState === "completed"
+                        ? styles.completed
+                        : overallState === "open"
+                        ? styles.open
+                        : styles.pending,
                     ]}
                   >
                     <Text style={styles.statusText}>
@@ -308,10 +335,10 @@ export default function CouncilDashboard() {
                       complaint.priority === "urgent"
                         ? styles.priorityUrgent
                         : complaint.priority === "high"
-                          ? styles.priorityHigh
-                          : complaint.priority === "medium"
-                            ? styles.priorityMedium
-                            : styles.priorityLow,
+                        ? styles.priorityHigh
+                        : complaint.priority === "medium"
+                        ? styles.priorityMedium
+                        : styles.priorityLow,
                     ]}
                   >
                     <Text style={styles.statusText}>
@@ -339,8 +366,10 @@ export default function CouncilDashboard() {
                 <Text style={styles.detail}>Student: {complaint.studentName}</Text>
               ) : null}
 
-              {complaint.rollNumber ? (
-                <Text style={styles.detail}>Roll No: {complaint.rollNumber}</Text>
+              {(complaint.rollNumber || complaint.roll) ? (
+                <Text style={styles.detail}>
+                  Roll No: {complaint.rollNumber || complaint.roll}
+                </Text>
               ) : null}
 
               {complaint.assignedWorker ? (
@@ -371,11 +400,23 @@ export default function CouncilDashboard() {
 }
 
 function normalizePor(por) {
-  const value = (por || "").trim().toLowerCase();
+  const raw = (por || "").trim().toLowerCase().replace(/[_-]+/g, " ");
 
-  if (value === "gsec maintenance") return "GSec Maintenance";
-  if (value === "gsec mess") return "GSec Mess";
-  if (value === "gsec sports") return "GSec Sports";
+  if (
+    raw === "gsec maintenance" ||
+    raw === "maintenance" ||
+    raw === "gsec_maintenance"
+  ) {
+    return "GSec Maintenance";
+  }
+
+  if (raw === "gsec mess" || raw === "mess" || raw === "gsec_mess") {
+    return "GSec Mess";
+  }
+
+  if (raw === "gsec sports" || raw === "sports" || raw === "gsec_sports") {
+    return "GSec Sports";
+  }
 
   return por || "";
 }
@@ -387,7 +428,9 @@ function normalizeCategory(category) {
 function getAllowedCategoriesByPor(por) {
   const normalizedPor = normalizePor(por);
 
-  if (normalizedPor === "GSec Maintenance") return ["other", "civil", "electricity"];
+  if (normalizedPor === "GSec Maintenance") {
+    return ["other", "civil", "electricity"];
+  }
   if (normalizedPor === "GSec Mess") return ["mess"];
   if (normalizedPor === "GSec Sports") return ["sports", "gym"];
 
@@ -406,19 +449,31 @@ function getComplaintTypeLabel(por) {
 
 function getOverallComplaintState(complaint) {
   if (complaint.highlightedByWarden || complaint.escalated) return "escalated";
-  if (complaint.studentStatus === "completed" || complaint.status === "completed") {
+
+  if (
+    complaint.studentStatus === "completed" ||
+    complaint.status === "completed"
+  ) {
     return "completed";
   }
-  if (complaint.workerStatus === "completed" && complaint.status !== "completed") {
+
+  if (
+    complaint.workerStatus === "completed" &&
+    complaint.status !== "completed"
+  ) {
     return "conflict";
   }
+
   if (
     complaint.status === "assigned" ||
     complaint.status === "in_progress" ||
+    complaint.status === "in-progress" ||
+    complaint.status === "in progress" ||
     complaint.workerStatus === "accepted"
   ) {
     return "open";
   }
+
   return "pending";
 }
 
@@ -550,9 +605,22 @@ const styles = StyleSheet.create({
     color: "#F5F7FF",
     marginBottom: 14,
   },
+  emptyWrap: {
+    paddingVertical: 24,
+  },
+  loaderWrap: {
+    paddingVertical: 24,
+    alignItems: "center",
+    gap: 10,
+  },
   emptyText: {
     fontSize: 16,
     color: "#AEB8E8",
+  },
+  emptySubText: {
+    fontSize: 13,
+    color: "#7F8BC7",
+    marginTop: 6,
   },
   card: {
     borderWidth: 1,

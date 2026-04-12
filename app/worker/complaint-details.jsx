@@ -157,12 +157,12 @@ export default function WorkerComplaintDetails() {
               overallState === "completed"
                 ? styles.completed
                 : overallState === "conflict"
-                ? styles.conflict
-                : overallState === "escalated"
-                ? styles.escalated
-                : overallState === "open"
-                ? styles.open
-                : styles.pending,
+                  ? styles.conflict
+                  : overallState === "escalated"
+                    ? styles.escalated
+                    : overallState === "open"
+                      ? styles.open
+                      : styles.pending,
             ]}
           >
             <Text style={styles.statusText}>
@@ -254,13 +254,15 @@ export default function WorkerComplaintDetails() {
         </Text>
       </View>
 
-      {complaint.photo && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Attached Photo</Text>
-          <Image source={{ uri: complaint.photo }} style={styles.image} />
-        </View>
+      {complaint.photo ? (
+        <Image
+          source={{ uri: complaint.photo }}
+          style={styles.image}
+          resizeMode="cover"
+        />
+      ) : (
+        <Text style={styles.meta}>No photo attached</Text>
       )}
-
       {!complaint.assignedWorker && (
         <Pressable
           style={[styles.takeButton, taking && styles.buttonDisabled]}

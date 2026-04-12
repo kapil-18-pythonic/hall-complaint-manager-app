@@ -1,15 +1,16 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   Pressable,
+  TextInput,
   RefreshControl,
-  Alert,
+  ActivityIndicator,
 } from "react-native";
-import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
-import { getComplaintsByHall } from "../../src/services/api";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { getAllComplaints } from "../../src/services/api";
 
 export default function WardenDashboard() {
   const params = useLocalSearchParams();
@@ -17,235 +18,167 @@ export default function WardenDashboard() {
 
   const name = Array.isArray(params.name) ? params.name[0] : params.name;
   const hall = Array.isArray(params.hall) ? params.hall[0] : params.hall;
-  const designation = Array.isArray(params.designation)
-    ? params.designation[0]
-    : params.designation;
 
-  const [activeFilter, setActiveFilter] = useState("total");
   const [complaints, setComplaints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [activeFilter, setActiveFilter] = useState("total");
 
-  const sortComplaintsWithOtherFirst = (items = []) => {
-    return [...items].sort((a, b) => {
-      if (a.category === "other" && b.category !== "other") return -1;
-      if (a.category !== "other" && b.category === "other") return 1;
-      return new Date(b.createdAt) - new Date(a.createdAt);
-    });
-  };
+  useEffect(() => {
+    loadComplaints();
+  }, [hall]);
 
-  const loadComplaints = async (showLoader = true) => {
+  const loadComplaints = async () => {
     try {
-      if (showLoader) setLoading(true);
+      setLoading(true);
+      const response = await getAllComplaints();
+      const all = response?.complaints || [];
 
-      const response = await getComplaintsByHall(hall);
+      const forwarded = all
+        .filter(
+          (item) =>
+            normalizeText(item.hall) === normalizeText(hall) &&
+            item.forwardedToWarden === true
+        )
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-      if (response.success) {
-        setComplaints(sortComplaintsWithOtherFirst(response.complaints || []));
-      } else {
-        setComplaints([]);
-        Alert.alert("Error", response.message || "Failed to load complaints.");
-      }
+      setComplaints(forwarded);
     } catch (error) {
       setComplaints([]);
-      Alert.alert("Error", error.message || "Failed to load complaints.");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      loadComplaints();
-    }, [hall])
-  );
-
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    loadComplaints(false);
+    await loadComplaints();
   };
 
-  const totalComplaints = complaints.length;
+  /* ================= UPDATED STATS ================= */
 
-  const pendingComplaints = complaints.filter(
-    (complaint) => getOverallComplaintState(complaint) === "pending"
-  ).length;
+  const stats = useMemo(() => {
+    const total = complaints.length;
 
-  const completedComplaints = complaints.filter(
-    (complaint) => getOverallComplaintState(complaint) === "completed"
-  ).length;
+    const pending = complaints.filter(
+      (c) => getOverallComplaintState(c) === "pending"
+    ).length;
 
-  const conflictComplaints = complaints.filter(
-    (complaint) => getOverallComplaintState(complaint) === "conflict"
-  ).length;
+    const conflict = complaints.filter(
+      (c) => getOverallComplaintState(c) === "conflict"
+    ).length;
+
+    const completed = complaints.filter(
+      (c) => getOverallComplaintState(c) === "completed"
+    ).length;
+
+    const highlighted = complaints.filter(
+      (c) =>
+        c.studentHighlighted ||
+        c.councilHighlighted ||
+        c.wardenEscalated
+    ).length;
+
+    const urgent = complaints.filter(
+      (c) => c.priority === "urgent"
+    ).length;
+
+    return { total, pending, conflict, completed, highlighted, urgent };
+  }, [complaints]);
+
+  /* ================= FILTER ================= */
 
   const filteredComplaints = useMemo(() => {
-    if (activeFilter === "total") return complaints;
+    let data = [...complaints];
 
-    if (activeFilter === "pending") {
-      return complaints.filter(
-        (complaint) => getOverallComplaintState(complaint) === "pending"
+    if (searchText.trim()) {
+      const query = searchText.toLowerCase();
+      data = data.filter((item) =>
+        [
+          item.title,
+          item.description,
+          item.studentName,
+          item.rollNumber,
+          item.roomNo,
+          item.mobileNo,
+          item.priority,
+        ].some((field) =>
+          String(field || "")
+            .toLowerCase()
+            .includes(query)
+        )
       );
     }
 
-    if (activeFilter === "completed") {
-      return complaints.filter(
-        (complaint) => getOverallComplaintState(complaint) === "completed"
+    if (activeFilter !== "total") {
+      data = data.filter(
+        (item) => getOverallComplaintState(item) === activeFilter
       );
     }
 
-    if (activeFilter === "conflicts") {
-      return complaints.filter(
-        (complaint) => getOverallComplaintState(complaint) === "conflict"
-      );
-    }
-
-    return complaints;
-  }, [activeFilter, complaints]);
+    return data;
+  }, [complaints, searchText, activeFilter]);
 
   const openComplaintDetails = (complaint) => {
     router.push({
       pathname: "/warden/complaint-details",
-      params: {
-        id: complaint._id,
-      },
+      params: { id: complaint._id },
     });
   };
 
-  const openManageMembers = () => {
-    router.push({
-      pathname: "/warden/manage-members",
-      params: {
-        hall,
-        name,
-        designation,
-      },
-    });
-  };
+  if (loading) {
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color="#4F7BFF" />
+        <Text style={styles.loadingText}>Loading dashboard...</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
-      showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.heading}>Warden Dashboard</Text>
-          <Text style={styles.subHeading}>{hall || "Hall Not Assigned"}</Text>
-        </View>
-      </View>
+      <Text style={styles.heading}>Warden Dashboard</Text>
 
       <View style={styles.profileCard}>
-        <View style={styles.profileTopRow}>
-          <View style={styles.profileAvatar}>
-            <Text style={styles.profileAvatarText}>
-              {(name || "W").charAt(0).toUpperCase()}
-            </Text>
-          </View>
-
-          <View style={styles.profileTextWrap}>
-            <Text style={styles.welcome}>Welcome, {name || "Warden"}</Text>
-            <Text style={styles.info}>
-              Designation: {designation || "Warden"}
-            </Text>
-            <Text style={styles.info}>Hall: {hall || "Not Assigned"}</Text>
-          </View>
-        </View>
-
-        <View style={styles.actionRow}>
-          <Pressable style={styles.primaryActionButton} onPress={openManageMembers}>
-            <Text style={styles.primaryActionText}>Manage Hall Members</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.secondaryActionButton}
-            onPress={() => loadComplaints(true)}
-          >
-            <Text style={styles.secondaryActionText}>Refresh Data</Text>
-          </Pressable>
-        </View>
+        <Text style={styles.profileName}>
+          Welcome, {name || "Warden"}
+        </Text>
+        <Text style={styles.profileText}>Hall: {hall}</Text>
       </View>
 
-      <Text style={styles.sectionTitle}>Complaint Overview</Text>
+      <Text style={styles.sectionHeading}>Complaint Overview</Text>
 
       <View style={styles.statsGrid}>
-        <Pressable
-          style={[
-            styles.statCard,
-            activeFilter === "total" && styles.activeStatCard,
-          ]}
-          onPress={() => setActiveFilter("total")}
-        >
-          <Text style={styles.statValue}>{totalComplaints}</Text>
-          <Text style={styles.statLabel}>Total</Text>
-        </Pressable>
-
-        <Pressable
-          style={[
-            styles.statCard,
-            activeFilter === "pending" && styles.activeStatCard,
-          ]}
-          onPress={() => setActiveFilter("pending")}
-        >
-          <Text style={[styles.statValue, styles.pendingText]}>
-            {pendingComplaints}
-          </Text>
-          <Text style={styles.statLabel}>Pending</Text>
-        </Pressable>
-
-        <Pressable
-          style={[
-            styles.statCard,
-            activeFilter === "completed" && styles.activeStatCard,
-          ]}
-          onPress={() => setActiveFilter("completed")}
-        >
-          <Text style={[styles.statValue, styles.completedText]}>
-            {completedComplaints}
-          </Text>
-          <Text style={styles.statLabel}>Completed</Text>
-        </Pressable>
-
-        <Pressable
-          style={[
-            styles.statCard,
-            activeFilter === "conflicts" && styles.activeStatCard,
-          ]}
-          onPress={() => setActiveFilter("conflicts")}
-        >
-          <Text style={[styles.statValue, styles.conflictText]}>
-            {conflictComplaints}
-          </Text>
-          <Text style={styles.statLabel}>Conflicts</Text>
-        </Pressable>
+        {renderStatCard("Total", stats.total, "total")}
+        {renderStatCard("Pending", stats.pending, "pending")}
+        {renderStatCard("Conflict", stats.conflict, "conflict")}
+        {renderStatCard("Completed", stats.completed, "completed")}
+        {renderStatCard("Highlighted", stats.highlighted, "highlighted")}
+        {renderStatCard("Urgent", stats.urgent, "urgent")}
       </View>
 
-      <View style={styles.listHeaderRow}>
-        <Text style={styles.sectionTitle}>
-          {activeFilter === "total"
-            ? "All Complaints"
-            : activeFilter === "pending"
-            ? "Pending Complaints"
-            : activeFilter === "completed"
-            ? "Completed Complaints"
-            : "Conflict Complaints"}
-        </Text>
-
-        <Text style={styles.countText}>{filteredComplaints.length} items</Text>
+      <View style={styles.searchCard}>
+        <TextInput
+          value={searchText}
+          onChangeText={setSearchText}
+          placeholder="Search complaints..."
+          placeholderTextColor="#8A94B2"
+          style={styles.searchInput}
+        />
       </View>
 
-      {loading ? (
-        <Text style={styles.emptyText}>Loading complaints...</Text>
-      ) : filteredComplaints.length === 0 ? (
+      {filteredComplaints.length === 0 ? (
         <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>No complaints available</Text>
-          <Text style={styles.emptySubtext}>
-            Pull to refresh or check another filter.
+          <Text style={styles.emptyTitle}>
+            No complaints available
           </Text>
         </View>
       ) : (
@@ -255,347 +188,185 @@ export default function WardenDashboard() {
           return (
             <Pressable
               key={complaint._id}
-              style={styles.card}
+              style={[
+                styles.complaintCard,
+                complaint.wardenEscalated && styles.escalatedBorder,
+              ]}
               onPress={() => openComplaintDetails(complaint)}
             >
-              <View style={styles.topRow}>
-                <Text style={styles.type}>{formatType(complaint.category)}</Text>
-
-                <View
-                  style={[
-                    styles.statusBadge,
-                    overallState === "completed"
-                      ? styles.completed
-                      : overallState === "conflict"
-                      ? styles.conflict
-                      : overallState === "escalated"
-                      ? styles.escalated
-                      : overallState === "open"
-                      ? styles.open
-                      : styles.pending,
-                  ]}
-                >
-                  <Text style={styles.statusText}>
-                    {formatState(overallState)}
-                  </Text>
-                </View>
-              </View>
-
-              <Text style={styles.title}>{complaint.title}</Text>
-
-              <Text style={styles.description} numberOfLines={2}>
-                {complaint.description}
+              <Text style={styles.complaintTitle}>
+                {complaint.title}
               </Text>
 
-              <View style={styles.metaRow}>
-                <Text style={styles.detail}>
-                  Student: {complaint.studentName || "Not Available"}
-                </Text>
-                <Text style={styles.detail}>
-                  Priority: {capitalize(complaint.priority || "medium")}
-                </Text>
-              </View>
+              <Text style={styles.complaintMeta}>
+                Student: {complaint.studentName}
+              </Text>
 
-              <Text style={styles.viewMore}>Tap to view full details</Text>
+              <Text style={styles.complaintMeta}>
+                Status: {capitalize(overallState)}
+              </Text>
+
+              <Text style={styles.complaintMeta}>
+                Priority: {capitalize(complaint.priority)}
+              </Text>
             </Pressable>
           );
         })
       )}
     </ScrollView>
   );
+
+  function renderStatCard(label, value, filterKey) {
+    const isActive = activeFilter === filterKey;
+
+    return (
+      <Pressable
+        style={[styles.statCard, isActive && styles.activeStatCard]}
+        onPress={() => setActiveFilter(filterKey)}
+      >
+        <Text style={styles.statNumber}>{value}</Text>
+        <Text style={styles.statLabel}>{label}</Text>
+      </Pressable>
+    );
+  }
+}
+
+/* ================= HELPERS ================= */
+
+function normalizeText(value) {
+  return (value || "").trim().toLowerCase();
 }
 
 function getOverallComplaintState(complaint) {
-  if (complaint.highlightedByWarden || complaint.escalated) return "escalated";
-  if (
-    complaint.studentStatus === "completed" ||
-    complaint.status === "completed"
-  ) {
-    return "completed";
-  }
-  if (
-    complaint.workerStatus === "completed" &&
-    complaint.status !== "completed"
-  ) {
-    return "conflict";
-  }
-  if (
-    complaint.status === "assigned" ||
-    complaint.status === "in_progress" ||
-    complaint.workerStatus === "accepted"
-  ) {
-    return "open";
-  }
+  if (complaint.wardenEscalated) return "conflict";
+  if (complaint.studentStatus === "completed") return "completed";
+  if (complaint.workerStatus === "completed") return "conflict";
   return "pending";
 }
 
-function formatType(type) {
-  if (type === "sports") return "Sports";
-  if (type === "gym") return "Gym";
-  if (type === "civil") return "Civil";
-  if (type === "electricity") return "Electricity";
-  if (type === "mess") return "Mess";
-  if (type === "other") return "Other";
-  return type;
+function capitalize(value) {
+  if (!value) return "";
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function formatState(state) {
-  if (state === "completed") return "Completed";
-  if (state === "conflict") return "Conflict";
-  if (state === "escalated") return "Escalated";
-  if (state === "open") return "Open";
-  return "Pending";
-}
-
-function capitalize(text) {
-  if (!text) return "";
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
+/* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1, backgroundColor: "#0B123F" },
+  contentContainer: { padding: 18, paddingBottom: 36 },
+
+  centerContainer: {
     flex: 1,
-    backgroundColor: "#0A0F2C",
+    backgroundColor: "#0B123F",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  contentContainer: {
-    paddingHorizontal: 18,
-    paddingTop: 48,
-    paddingBottom: 36,
-    marginTop: 20,
-  },
-  headerRow: {
-    marginBottom: 18,
-  },
+
+  loadingText: { marginTop: 12, color: "#C7D2FE" },
+
   heading: {
     fontSize: 28,
     fontWeight: "800",
-    color: "#F5F7FF",
+    color: "#FFFFFF",
+    marginBottom: 18,
   },
-  subHeading: {
-    marginTop: 6,
-    fontSize: 15,
-    color: "#9FB0FF",
-    fontWeight: "600",
-  },
+
   profileCard: {
-    backgroundColor: "#141D6B",
-    borderWidth: 1,
-    borderColor: "#3147C9",
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 24,
+    backgroundColor: "#141E61",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
   },
-  profileTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  profileAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: "#2E46D8",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  profileAvatarText: {
-    color: "#FFFFFF",
-    fontSize: 22,
+
+  profileName: {
+    fontSize: 21,
     fontWeight: "800",
-  },
-  profileTextWrap: {
-    flex: 1,
-  },
-  welcome: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#F5F7FF",
-    marginBottom: 6,
-  },
-  info: {
-    fontSize: 14,
-    color: "#AEB8E8",
-    marginBottom: 3,
-  },
-  actionRow: {
-    marginTop: 16,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  primaryActionButton: {
-    flex: 1,
-    backgroundColor: "#3B5BFF",
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  primaryActionText: {
     color: "#FFFFFF",
-    fontSize: 14,
+  },
+
+  profileText: {
+    fontSize: 15,
+    color: "#A5B4FC",
+    marginTop: 4,
+  },
+
+  sectionHeading: {
+    fontSize: 18,
     fontWeight: "800",
-  },
-  secondaryActionButton: {
-    flex: 1,
-    backgroundColor: "#0F1A55",
-    borderWidth: 1,
-    borderColor: "#3147C9",
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  secondaryActionText: {
-    color: "#DCE3FF",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#F5F7FF",
+    color: "#E0E7FF",
     marginBottom: 14,
   },
+
   statsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    marginBottom: 24,
+    marginBottom: 18,
   },
+
   statCard: {
     width: "48%",
-    backgroundColor: "#141D6B",
-    borderWidth: 1,
-    borderColor: "#3147C9",
-    borderRadius: 16,
-    paddingVertical: 18,
-    paddingHorizontal: 12,
-    marginBottom: 12,
+    backgroundColor: "#141E61",
+    borderRadius: 18,
+    padding: 20,
+    marginBottom: 14,
   },
+
   activeStatCard: {
-    backgroundColor: "#1E2D8F",
-    borderColor: "#4A63FF",
+    backgroundColor: "#1C2B8F",
   },
-  statValue: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#F5F7FF",
-    marginBottom: 4,
+
+  statNumber: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#FFFFFF",
   },
+
   statLabel: {
     fontSize: 14,
-    color: "#D7DBF5",
-    fontWeight: "600",
+    color: "#A5B4FC",
+    marginTop: 4,
   },
-  pendingText: {
-    color: "#F59E0B",
-  },
-  completedText: {
-    color: "#10B981",
-  },
-  conflictText: {
-    color: "#EF4444",
-  },
-  listHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  countText: {
-    color: "#AEB8E8",
-    fontSize: 13,
-    fontWeight: "600",
+
+  searchCard: {
+    backgroundColor: "#141E61",
+    borderRadius: 16,
+    padding: 12,
     marginBottom: 14,
   },
+
+  searchInput: { color: "#FFFFFF" },
+
   emptyCard: {
-    backgroundColor: "#141D6B",
-    borderWidth: 1,
-    borderColor: "#3147C9",
-    borderRadius: 16,
-    padding: 18,
-  },
-  emptyTitle: {
-    color: "#F5F7FF",
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 6,
-  },
-  emptySubtext: {
-    color: "#AEB8E8",
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: "#AEB8E8",
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: "#3147C9",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 14,
-    backgroundColor: "#141D6B",
-  },
-  topRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    backgroundColor: "#141E61",
+    padding: 24,
+    borderRadius: 18,
     alignItems: "center",
-    marginBottom: 8,
   },
-  type: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#8FA8FF",
+
+  emptyTitle: { color: "#FFFFFF", fontWeight: "800" },
+
+  complaintCard: {
+    backgroundColor: "#141E61",
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 14,
   },
-  title: {
+
+  escalatedBorder: {
+    borderWidth: 2,
+    borderColor: "#FF4D4F",
+  },
+
+  complaintTitle: {
     fontSize: 18,
-    fontWeight: "700",
-    color: "#F5F7FF",
-    marginBottom: 6,
-  },
-  description: {
-    fontSize: 15,
-    color: "#DCE3FF",
-    marginBottom: 10,
-    lineHeight: 22,
-  },
-  metaRow: {
-    marginBottom: 2,
-  },
-  detail: {
-    fontSize: 14,
-    color: "#AEB8E8",
-    marginBottom: 4,
-  },
-  viewMore: {
-    marginTop: 8,
-    fontSize: 13,
-    color: "#8FA8FF",
-    fontWeight: "700",
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  pending: {
-    backgroundColor: "#F59E0B",
-  },
-  completed: {
-    backgroundColor: "#10B981",
-  },
-  conflict: {
-    backgroundColor: "#EF4444",
-  },
-  escalated: {
-    backgroundColor: "#8B5CF6",
-  },
-  open: {
-    backgroundColor: "#3B82F6",
-  },
-  statusText: {
+    fontWeight: "800",
     color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "700",
+  },
+
+  complaintMeta: {
+    fontSize: 14,
+    color: "#A5B4FC",
+    marginTop: 4,
   },
 });
