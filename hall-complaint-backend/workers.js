@@ -16,7 +16,7 @@ const workers = [
   {
     workerId: "W003",
     name: "Abhishek",
-    hall: "RK Hall",
+    hall: "Nehru Hall",
     email: "satyamrawatsn@gmail.com",
     type: "electricity",
   },
