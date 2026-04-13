@@ -3,8 +3,9 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "cloudinary": "^2.9.0",
+    "cloudinary": "^1.41.0",
     "multer": "^2.1.1",
+    "multer-storage-cloudinary": "^4.0.0",
     "resend": "^6.9.4",
     "xlsx": "^0.18.5"
   }
