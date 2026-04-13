@@ -14,7 +14,7 @@ const supervisers = [
   {
     name: "Srinithya",
     hall: "SNVH Hall",
-    por: "Manager",
+    por: "manager",
     email: "kapilchouhan1811@gmail.com",
   },
   {
