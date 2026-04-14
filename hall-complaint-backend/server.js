@@ -7,6 +7,8 @@ dns.setDefaultResultOrder("ipv4first");
 
 require("dotenv").config();
 
+const jwt = require("jsonwebtoken");
+
 const connectDB = require("./config/db");
 
 // Static fallback (optional)
@@ -290,11 +292,18 @@ app.post("/verify-otp", async (req, res) => {
 
     delete otpStore[key];
 
+    const token = jwt.sign(
+      { userId: user._id || user.roll || user.email, role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" } // ✅ auto logout after 7 days
+    );
+
     return res.status(200).json({
       success: true,
       message: "OTP verified successfully.",
       role,
       user,
+      token, // 🔥 NEW
     });
   } catch (error) {
     console.error("Verify OTP error:", error);
