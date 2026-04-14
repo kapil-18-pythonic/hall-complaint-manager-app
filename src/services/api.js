@@ -38,10 +38,27 @@ export async function verifyOtp(role, identifier, otp) {
 // =========================
 
 export async function createComplaint(data) {
+  const formData = new FormData();
+
+  // append all fields
+  Object.keys(data).forEach((key) => {
+    if (key !== "photo") {
+      formData.append(key, data[key]);
+    }
+  });
+
+  // append image
+  if (data.photo) {
+    formData.append("photo", {
+      uri: data.photo,
+      type: "image/jpeg",
+      name: "complaint.jpg",
+    });
+  }
+
   const response = await fetch(`${BASE_URL}/api/complaints`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
+    body: formData, // ✅ NOT JSON
   });
 
   return handleResponse(response);

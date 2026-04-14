@@ -293,7 +293,7 @@ export default function ManageMembers() {
         </View>
 
         <Text style={styles.headerNote}>
-          Manager: {name || "Manager"} can manage members for this hall.
+          Warden: {name || "Warden"} can manage members for this hall.
         </Text>
       </View>
 

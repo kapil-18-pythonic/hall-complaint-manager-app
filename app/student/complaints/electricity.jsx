@@ -60,25 +60,46 @@ export default function ElectricityComplaint() {
     try {
       setSubmitting(true);
 
-      const payload = {
+      const formData = new FormData();
+
+      formData.append("category", "electricity");
+      formData.append("title", title.trim());
+      formData.append("description", description.trim());
+      formData.append("roomNo", roomNo.trim());
+      formData.append("mobileNo", mobileNo.trim());
+      formData.append("hall", hall || "");
+      formData.append("studentName", name || "");
+      formData.append("rollNumber", roll || "");
+      formData.append("priority", priority);
+
+      // 🔥 THIS IS THE MAIN FIX
+      if (photo) {
+        formData.append("photo", {
+          uri: photo,
+          name: "complaint.jpg",
+          type: "image/jpeg",
+        });
+      }
+
+      const response = await createComplaint({
         category: "electricity",
-        title: title.trim(),
-        description: description.trim(),
-        roomNo: roomNo.trim(),
-        mobileNo: mobileNo.trim(),
-        photo: photo || "",
-        hall: hall || "",
-        studentName: name || "",
-        rollNumber: roll || "",
+        title,
+        description,
+        roomNo,
+        mobileNo,
+        hall,
+        studentName: name,
+        rollNumber: roll,
         priority,
-      };
+        photo,
+      });
 
-      const response = await createComplaint(payload);
+      const data = await response.json();
 
-      if (!response.success) {
+      if (!response.ok || !data.success) {
         Alert.alert(
           "Submission Failed",
-          response.message || "Could not submit complaint."
+          data.message || "Could not submit complaint."
         );
         return;
       }
@@ -88,6 +109,7 @@ export default function ElectricityComplaint() {
         "Your electricity complaint has been submitted."
       );
 
+      // Reset
       setTitle("");
       setDescription("");
       setRoomNo("");

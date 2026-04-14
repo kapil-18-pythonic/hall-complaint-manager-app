@@ -8,13 +8,15 @@ export const addComplaint = (complaint) => {
   complaints.push({
     ...complaint,
 
+    photo: complaint.photo || "", // ✅ ADD THIS
+
     // assignment
     assignedWorker: null,
     assignedWorkerId: null,
     assignedBy: null,
     assignedByRole: null,
     assignedAt: null,
-
+    
     // worker/student state
     workerStatus: "pending",
     studentStatus: "pending",

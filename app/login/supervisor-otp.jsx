@@ -20,6 +20,12 @@ export default function HallSupervisorOtp() {
     ? params.identifier[0]
     : params.identifier;
 
+  const roleParam = Array.isArray(params.role)
+    ? params.role[0]
+    : params.role;
+
+  const role = roleParam || "hallSupervisor";
+
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
@@ -35,13 +41,11 @@ export default function HallSupervisorOtp() {
 
       const response = await fetch(`${BASE_URL}/verify-otp`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          role: "hallSupervisor",
+          role, 
           identifier,
-          otp,
+          otp: otp.trim(),
         }),
       });
 
@@ -52,10 +56,13 @@ export default function HallSupervisorOtp() {
         return;
       }
 
-      // 🔥 NEW DASHBOARD REDIRECTION LOGIC
+      // ✅ Destructure user details from backend response
       const { name, hall, por, email } = data.user;
 
-      if (por === "manager") {
+      // ✅ Case-insensitive check: "manager", "Manager", or "MANAGER" will all work
+      const normalizedPor = por ? por.toLowerCase() : "";
+
+      if (normalizedPor === "manager") {
         router.replace({
           pathname: "/manager/dashboard",
           params: { name, hall, por, email },
@@ -76,26 +83,18 @@ export default function HallSupervisorOtp() {
   const handleResendOtp = async () => {
     try {
       setResending(true);
-
       const response = await fetch(`${BASE_URL}/send-otp`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          role: "hallSupervisor",
-          identifier,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, identifier }),
       });
 
       const data = await response.json();
-
-      if (!response.ok || !data.success) {
+      if (response.ok && data.success) {
+        Alert.alert("OTP Resent", `A new OTP was sent to ${data.user.email}`);
+      } else {
         Alert.alert("Error", data.message || "Failed to resend OTP.");
-        return;
       }
-
-      Alert.alert("OTP Resent", `A new OTP was sent to ${data.user.email}`);
     } catch (error) {
       Alert.alert("Server Error", "Could not connect to backend server.");
     } finally {
@@ -106,7 +105,10 @@ export default function HallSupervisorOtp() {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.heading}>Verify Hall Supervisor/Manager OTP</Text>
+        <Text style={styles.heading}>
+          Verify OTP
+        </Text>
+
         <Text style={styles.subheading}>
           Enter the OTP sent to {identifier || "your email"}
         </Text>

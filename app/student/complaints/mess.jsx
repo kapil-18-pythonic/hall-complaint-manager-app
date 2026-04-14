@@ -60,25 +60,41 @@ export default function MessComplaint() {
     try {
       setSubmitting(true);
 
-      const payload = {
-        category: "mess",
-        title: title.trim(),
-        description: description.trim(),
-        roomNo: roomNo.trim(),
-        mobileNo: mobileNo.trim(),
-        photo: photo || "",
-        hall: hall || "",
-        studentName: name || "",
-        rollNumber: roll || "",
-        priority,
-      };
+      const formData = new FormData();
 
-      const response = await createComplaint(payload);
+      formData.append("category", "mess");
+      formData.append("title", title.trim());
+      formData.append("description", description.trim());
+      formData.append("roomNo", roomNo.trim());
+      formData.append("mobileNo", mobileNo.trim());
+      formData.append("hall", hall || "");
+      formData.append("studentName", name || "");
+      formData.append("rollNumber", roll || "");
+      formData.append("priority", priority);
 
-      if (!response.success) {
+      // 🔥 THIS IS THE MAIN FIX
+      if (photo) {
+        formData.append("photo", {
+          uri: photo,
+          name: "complaint.jpg",
+          type: "image/jpeg",
+        });
+      }
+
+      const response = await fetch(
+        `${BASE_URL}/api/complaints`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
         Alert.alert(
           "Submission Failed",
-          response.message || "Could not submit complaint."
+          data.message || "Could not submit complaint."
         );
         return;
       }
@@ -88,6 +104,7 @@ export default function MessComplaint() {
         "Your mess complaint has been submitted."
       );
 
+      // Reset
       setTitle("");
       setDescription("");
       setRoomNo("");

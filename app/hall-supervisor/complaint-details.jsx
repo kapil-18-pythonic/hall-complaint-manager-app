@@ -602,6 +602,7 @@ const styles = StyleSheet.create({
     height: 220,
     borderRadius: 14,
     marginTop: 8,
+    marginBottom:8,
   },
   statusBadge: {
     paddingHorizontal: 10,

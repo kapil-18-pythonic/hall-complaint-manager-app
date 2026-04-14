@@ -60,20 +60,18 @@ export default function CivilComplaint() {
     try {
       setSubmitting(true);
 
-      const payload = {
+      const response = await createComplaint({
         category: "civil",
         title: title.trim(),
         description: description.trim(),
         roomNo: roomNo.trim(),
         mobileNo: mobileNo.trim(),
-        photo: photo || "",
         hall: hall || "",
         studentName: name || "",
         rollNumber: roll || "",
         priority,
-      };
-
-      const response = await createComplaint(payload);
+        photo, // 🔥 Cloudinary
+      });
 
       if (!response.success) {
         Alert.alert(
@@ -88,6 +86,7 @@ export default function CivilComplaint() {
         "Your civil complaint has been submitted."
       );
 
+      // Reset
       setTitle("");
       setDescription("");
       setRoomNo("");
@@ -255,7 +254,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     marginBottom: 12,
-    marginTop: 2,
   },
   priorityRow: {
     flexDirection: "row",
@@ -289,13 +287,13 @@ const styles = StyleSheet.create({
     borderColor: "#4A63FF",
     paddingVertical: 15,
     borderRadius: 14,
+    alignItems: "center",
   },
   submitButtonDisabled: {
-    opacity: 0.7,
+    opacity: 0.6,
   },
   submitButtonText: {
     color: "#FFFFFF",
-    textAlign: "center",
     fontSize: 17,
     fontWeight: "700",
   },
