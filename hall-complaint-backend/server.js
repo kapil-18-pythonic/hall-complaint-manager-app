@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const { Resend } = require("resend");
 const dns = require("dns");
+const Token = require("./models/Token");
 
 dns.setDefaultResultOrder("ipv4first");
 
@@ -344,4 +345,21 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
+});
+
+app.post("/save-token", async (req, res) => {
+  const { token, role, userId } = req.body;
+
+  try {
+    await Token.findOneAndUpdate(
+      { userId },
+      { token, role },
+      { upsert: true }
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error saving token:", error);
+    res.status(500).json({ success: false });
+  }
 });
