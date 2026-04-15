@@ -41,6 +41,25 @@ connectDB();
 app.use(cors());
 app.use(express.json());
 
+
+app.post("/save-token", async (req, res) => {
+  const { token, role, userId } = req.body;
+
+  try {
+    await Token.findOneAndUpdate(
+      { userId },
+      { token, role },
+      { upsert: true }
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error saving token:", error);
+    res.status(500).json({ success: false });
+  }
+});
+
+
 /* =====================================================
    HELPERS
 ===================================================== */
@@ -341,23 +360,6 @@ app.use((err, req, res, next) => {
     success: false,
     message: err.message || "Internal server error",
   });
-});
-
-app.post("/save-token", async (req, res) => {
-  const { token, role, userId } = req.body;
-
-  try {
-    await Token.findOneAndUpdate(
-      { userId },
-      { token, role },
-      { upsert: true }
-    );
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Error saving token:", error);
-    res.status(500).json({ success: false });
-  }
 });
 
 app.listen(PORT, "0.0.0.0", () => {
