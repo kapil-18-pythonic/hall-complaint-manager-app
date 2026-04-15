@@ -343,10 +343,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
-});
-
 app.post("/save-token", async (req, res) => {
   const { token, role, userId } = req.body;
 
@@ -363,3 +359,8 @@ app.post("/save-token", async (req, res) => {
     res.status(500).json({ success: false });
   }
 });
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
